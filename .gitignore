@@ -1,0 +1,8 @@
+# no prediction folder
+prediction/
+
+# no results folder
+results/
+
+# no __pycache__ folder
+__pycache__

@@ -1,0 +1,4 @@
+# nsml: pytorch/pytorch:1.7.0-cuda11.0-cudnn8-runtime
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.7.0+cu101
+transformers==3.5.1
