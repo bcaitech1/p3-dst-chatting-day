@@ -1,4 +1,3 @@
-# %%
 import argparse
 import json
 import os
@@ -223,4 +222,3 @@ if __name__ == "__main__":
         torch.save(model.state_dict(), f"{output_dir}/model-{epoch}.bin")
     print(f"Best checkpoint: {output_dir}/model-{best_checkpoint}.bin")
 
-# %%
