@@ -179,7 +179,7 @@ if __name__ == "__main__":
             else:
                 tf = None
 
-# %%
+
             all_point_outputs, all_gate_outputs = model(
                 input_ids, segment_ids, input_masks, target_ids.size(-1), tf
             )
