@@ -2,6 +2,8 @@ import torch
 
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
 
+class SOM_DSTPreprocessor(DSTPreprocessor):
+    ...
 
 class TRADEPreprocessor(DSTPreprocessor):
     def __init__(
