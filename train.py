@@ -52,7 +52,7 @@ if __name__ == "__main__":
         "--model_name_or_path",
         type=str,
         help="Subword Vocab만을 위한 huggingface model",
-        default="dsksd/bert-ko-small-minimal",  #### Solution code에 있는 small-bert 사
+        default="dsksd/bert-ko-small-minimal",  #### Solution code에 있는 small-bert 사용
     )
 
     # Model Specific Argument
