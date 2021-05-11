@@ -69,8 +69,8 @@ class TRADEPreprocessor(DSTPreprocessor):
             if self.id2gating[gate] == "none":
                 continue
 
-            if self.id2gating[gate] == "dontcare":
-                recovered.append("%s-%s" % (slot, "dontcare"))
+            if self.id2gating[gate] == ["dontcare", "yes", "no"]:
+                recovered.append("%s-%s" % (slot, self.id2gating[gate]))
                 continue
 
             token_id_list = []
