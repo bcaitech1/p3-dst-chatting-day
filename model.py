@@ -20,7 +20,8 @@ def masked_cross_entropy_for_value(logits, target, pad_idx=0):
 class TRADE(nn.Module):
     def __init__(self, config, tokenized_slot_meta, pad_idx=0, use_bert=True):
         super(TRADE, self).__init__()
-        if use_bert == True: ### ues_bert가 none이라면 GRUEncoder사용
+        self.use_bert = use_bert
+        if self.use_bert == True:  ### ues_bert가 none이라면 GRUEncoder사용
             self.encoder = BERTEncoder(
                 config.model_name_or_path,
             )
@@ -44,21 +45,23 @@ class TRADE(nn.Module):
         )
 
         self.decoder.set_slot_idx(tokenized_slot_meta)
-        if use_bert == True:
-            self.tie_weight(use_bert=use_bert)
-        else:
-            self.tie_weight()
+        self.tie_weight()
 
     def set_subword_embedding(self, model_name_or_path):
         model = BertModel.from_pretrained(model_name_or_path)
-        self.encoder.bert.embeddings.word_embeddings.weight = model.embeddings.word_embeddings.weight
-        self.tie_weight(use_bert=True)
+        if self.use_bert == True:
+            self.encoder.bert.embeddings.word_embeddings.weight = model.embeddings.word_embeddings.weight
+            self.tie_weight()
+        else:
+            self.encoder.embed.weight = model.embeddings.word_embeddings.weight # bert encoder가 아닐 때
+            self.tie_weight()
 
-    def tie_weight(self, use_bert=None):
-        if use_bert == True:
+    def tie_weight(self):
+        if self.use_bert == True: 
             self.decoder.embed.weight = self.encoder.bert.embeddings.word_embeddings.weight
         else:
-            self.decoder.embed.weight = self.encoder.embed.weight
+            self.decoder.embed.weight = self.encoder.embed.weight ## bert를 사용하지 않는다면 GRU의 embedding layer 공유
+
         if self.decoder.proj_layer:
             self.decoder.proj_layer.weight = self.encoder.proj_layer.weight
 

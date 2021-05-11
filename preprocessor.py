@@ -1,7 +1,9 @@
 import torch
 
+from tqdm.auto import tqdm
 import numpy as np
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
+from tqdm.auto import tqdm
 
 
 class TRADEPreprocessor(DSTPreprocessor):
@@ -58,7 +60,7 @@ class TRADEPreprocessor(DSTPreprocessor):
         )
 
     def convert_examples_to_features(self, examples):
-        return list(map(self._convert_example_to_feature, examples))
+        return list(map(self._convert_example_to_feature, tqdm(examples)))
 
     def recover_state(self, gate_list, gen_list):
         assert len(gate_list) == len(self.slot_meta)
@@ -69,8 +71,8 @@ class TRADEPreprocessor(DSTPreprocessor):
             if self.id2gating[gate] == "none":
                 continue
 
-            if self.id2gating[gate] == "dontcare":
-                recovered.append("%s-%s" % (slot, "dontcare"))
+            if self.id2gating[gate] == ["dontcare", "yes", "no"]:
+                recovered.append("%s-%s" % (slot, self.id2gating[gate]))
                 continue
 
             token_id_list = []
