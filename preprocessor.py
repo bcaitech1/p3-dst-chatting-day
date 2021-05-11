@@ -5,6 +5,9 @@ import numpy as np
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
 from tqdm.auto import tqdm
 
+class SomDSTPreprocessor(DSTPreprocessor):
+    def __init__():
+        ...
 
 class TRADEPreprocessor(DSTPreprocessor):
     def __init__(
