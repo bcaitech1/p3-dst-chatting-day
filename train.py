@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     # Define Preprocessor
     tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
-    processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=0.1) ## preprocessor에 word_dropout 적용
+    processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=0.1) ## preprocessor에 word dropout 적용
     args.vocab_size = len(tokenizer)
     args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr
 

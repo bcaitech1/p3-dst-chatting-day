@@ -21,7 +21,7 @@ class TRADE(nn.Module):
     def __init__(self, config, tokenized_slot_meta, pad_idx=0, use_bert=True):
         super(TRADE, self).__init__()
         self.use_bert = use_bert
-        if use_bert == True:  ### ues_bert가 none이라면 GRUEncoder사
+        if self.use_bert == True:  ### ues_bert가 none이라면 GRUEncoder사용
             self.encoder = BERTEncoder(
                 config.model_name_or_path,
             )
