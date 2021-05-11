@@ -3,6 +3,7 @@ import torch
 from tqdm.auto import tqdm
 import numpy as np
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
+from tqdm.auto import tqdm
 
 
 class TRADEPreprocessor(DSTPreprocessor):

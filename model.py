@@ -53,14 +53,14 @@ class TRADE(nn.Module):
             self.encoder.bert.embeddings.word_embeddings.weight = model.embeddings.word_embeddings.weight
             self.tie_weight()
         else:
-            self.encoder.embed.weight = model.embeddings.word_embeddings.weight
+            self.encoder.embed.weight = model.embeddings.word_embeddings.weight # bert encoder가 아닐 때
             self.tie_weight()
 
     def tie_weight(self):
-        if self.use_bert == True:
+        if self.use_bert == True: 
             self.decoder.embed.weight = self.encoder.bert.embeddings.word_embeddings.weight
         else:
-            self.decoder.embed.weight = self.encoder.embed.weight
+            self.decoder.embed.weight = self.encoder.embed.weight ## bert를 사용하지 않는다면 GRU의 embedding layer 공유
 
         if self.decoder.proj_layer:
             self.decoder.proj_layer.weight = self.encoder.proj_layer.weight
