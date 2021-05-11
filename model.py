@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import ElectraModel
+from transformers import ElectraModel, BertConfig, BertModel
 
 
 def masked_cross_entropy_for_value(logits, target, pad_idx=0):
@@ -18,16 +18,21 @@ def masked_cross_entropy_for_value(logits, target, pad_idx=0):
 
 
 class TRADE(nn.Module):
-    def __init__(self, config, tokenized_slot_meta, pad_idx=0):
+    def __init__(self, config, tokenized_slot_meta, pad_idx=0, use_bert=True):
         super(TRADE, self).__init__()
-        self.encoder = GRUEncoder(
-            config.vocab_size,
-            config.hidden_size,
-            1,
-            config.hidden_dropout_prob,
-            config.proj_dim,
-            pad_idx,
-        )
+        if use_bert == True: ### ues_bert가 none이라면 GRUEncoder사용
+            self.encoder = BERTEncoder(
+                config.model_name_or_path,
+            )
+        else:
+            self.encoder = GRUEncoder(
+                config.vocab_size,
+                config.hidden_size,
+                1,
+                config.hidden_dropout_prob,
+                config.proj_dim,
+                pad_idx,
+            )
 
         self.decoder = SlotGenerator(
             config.vocab_size,
@@ -39,20 +44,26 @@ class TRADE(nn.Module):
         )
 
         self.decoder.set_slot_idx(tokenized_slot_meta)
-        self.tie_weight()
-        
-    def set_subword_embedding(self, model_name_or_path):
-        model = ElectraModel.from_pretrained(model_name_or_path)
-        self.encoder.embed.weight = model.embeddings.word_embeddings.weight
-        self.tie_weight()
+        if use_bert == True:
+            self.tie_weight(use_bert=use_bert)
+        else:
+            self.tie_weight()
 
-    def tie_weight(self):
-        self.decoder.embed.weight = self.encoder.embed.weight
+    def set_subword_embedding(self, model_name_or_path):
+        model = BertModel.from_pretrained(model_name_or_path)
+        self.encoder.bert.embeddings.word_embeddings.weight = model.embeddings.word_embeddings.weight
+        self.tie_weight(use_bert=True)
+
+    def tie_weight(self, use_bert=None):
+        if use_bert == True:
+            self.decoder.embed.weight = self.encoder.bert.embeddings.word_embeddings.weight
+        else:
+            self.decoder.embed.weight = self.encoder.embed.weight
         if self.decoder.proj_layer:
             self.decoder.proj_layer.weight = self.encoder.proj_layer.weight
 
     def forward(
-        self, input_ids, token_type_ids, attention_mask=None, max_len=10, teacher=None
+            self, input_ids, token_type_ids, attention_mask=None, max_len=10, teacher=None
     ):
 
         encoder_outputs, pooled_output = self.encoder(input_ids=input_ids)
@@ -66,6 +77,21 @@ class TRADE(nn.Module):
         )
 
         return all_point_outputs, all_gate_outputs
+
+
+class BERTEncoder(nn.Module):
+    """
+    Use Bert encoder
+    """
+
+    def __init__(self, model_name):
+        super(BERTEncoder, self).__init__()
+        config = BertConfig.from_pretrained(model_name)
+        self.bert = BertModel.from_pretrained(model_name, config=config)
+
+    def forward(self, input_ids):
+        encoder_output, pooled_output = self.bert(input_ids)
+        return encoder_output, pooled_output
 
 
 class GRUEncoder(nn.Module):
@@ -97,14 +123,14 @@ class GRUEncoder(nn.Module):
         x = self.dropout(x)
         o, h = self.gru(x)
         o = o.masked_fill(mask, 0.0)
-        output = o[:, :, : self.d_model] + o[:, :, self.d_model :]
+        output = o[:, :, : self.d_model] + o[:, :, self.d_model:]
         hidden = h[0] + h[1]  # n_layer 고려
         return output, hidden
 
 
 class SlotGenerator(nn.Module):
     def __init__(
-        self, vocab_size, hidden_size, dropout, n_gate, proj_dim=None, pad_idx=0
+            self, vocab_size, hidden_size, dropout, n_gate, proj_dim=None, pad_idx=0
     ):
         super(SlotGenerator, self).__init__()
         self.pad_idx = pad_idx
@@ -145,7 +171,7 @@ class SlotGenerator(nn.Module):
         return x
 
     def forward(
-        self, input_ids, encoder_output, hidden, input_masks, max_len, teacher=None
+            self, input_ids, encoder_output, hidden, input_masks, max_len, teacher=None
     ):
         input_masks = input_masks.ne(1)
         # J, slot_meta : key : [domain, slot] ex> LongTensor([1,2])
@@ -158,7 +184,7 @@ class SlotGenerator(nn.Module):
         all_point_outputs = torch.zeros(batch_size, J, max_len, self.vocab_size).to(
             input_ids.device
         )
-        
+
         # Parallel Decoding
         w = slot_e.repeat(batch_size, 1).unsqueeze(1)
         hidden = hidden.repeat_interleave(J, dim=1)
