@@ -5,18 +5,18 @@ from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
 
 class TRADEPreprocessor(DSTPreprocessor):
     def __init__(
-        self,
-        slot_meta,
-        src_tokenizer,
-        trg_tokenizer=None,
-        ontology=None,
-        max_seq_length=512,
+            self,
+            slot_meta,
+            src_tokenizer,
+            trg_tokenizer=None,
+            ontology=None,
+            max_seq_length=512,
     ):
         self.slot_meta = slot_meta
         self.src_tokenizer = src_tokenizer
         self.trg_tokenizer = trg_tokenizer if trg_tokenizer else src_tokenizer
         self.ontology = ontology
-        self.gating2id = {"none": 0, "dontcare": 1, "ptr": 2}
+        self.gating2id = {"none": 0, "dontcare": 1, "ptr": 2, "yes": 3, "no": 4}
         self.id2gating = {v: k for k, v in self.gating2id.items()}
         self.max_seq_length = max_seq_length
 
@@ -24,15 +24,15 @@ class TRADEPreprocessor(DSTPreprocessor):
         dialogue_context = " [SEP] ".join(example.context_turns + example.current_turn)
 
         input_id = self.src_tokenizer.encode(dialogue_context, add_special_tokens=False)
-#         max_length = self.max_seq_length - 2
-#         if len(input_id) > max_length:
-#             gap = len(input_id) - max_length
-#             input_id = input_id[gap:]
+        max_length = self.max_seq_length - 2
+        if len(input_id) > max_length:
+            gap = len(input_id) - max_length
+            input_id = input_id[gap:]
 
         input_id = (
-            [self.src_tokenizer.cls_token_id]
-            + input_id
-            + [self.src_tokenizer.sep_token_id]
+                [self.src_tokenizer.cls_token_id]
+                + input_id
+                + [self.src_tokenizer.sep_token_id]
         )
         segment_id = [0] * len(input_id)
 
