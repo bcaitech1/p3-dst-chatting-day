@@ -1,5 +1,6 @@
 import torch
 
+from tqdm.auto import tqdm
 import numpy as np
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
 
@@ -58,7 +59,7 @@ class TRADEPreprocessor(DSTPreprocessor):
         )
 
     def convert_examples_to_features(self, examples):
-        return list(map(self._convert_example_to_feature, examples))
+        return list(map(self._convert_example_to_feature, tqdm(examples)))
 
     def recover_state(self, gate_list, gen_list):
         assert len(gate_list) == len(self.slot_meta)
