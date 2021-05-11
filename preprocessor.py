@@ -1,22 +1,25 @@
 import torch
 
+import numpy as np
 from data_utils import DSTPreprocessor, OpenVocabDSTFeature, convert_state_dict
 
 
 class TRADEPreprocessor(DSTPreprocessor):
     def __init__(
-        self,
-        slot_meta,
-        src_tokenizer,
-        trg_tokenizer=None,
-        ontology=None,
-        max_seq_length=512,
+            self,
+            slot_meta,
+            src_tokenizer,
+            trg_tokenizer=None,
+            ontology=None,
+            max_seq_length=512,
+            word_drop = None
     ):
         self.slot_meta = slot_meta
         self.src_tokenizer = src_tokenizer
         self.trg_tokenizer = trg_tokenizer if trg_tokenizer else src_tokenizer
         self.ontology = ontology
-        self.gating2id = {"none": 0, "dontcare": 1, "ptr": 2}
+        self.word_drop = word_drop ### word_dropout
+        self.gating2id = {"none": 0, "dontcare": 1, "ptr": 2, "yes": 3, "no": 4}
         self.id2gating = {v: k for k, v in self.gating2id.items()}
         self.max_seq_length = max_seq_length
 
@@ -24,15 +27,15 @@ class TRADEPreprocessor(DSTPreprocessor):
         dialogue_context = " [SEP] ".join(example.context_turns + example.current_turn)
 
         input_id = self.src_tokenizer.encode(dialogue_context, add_special_tokens=False)
-#         max_length = self.max_seq_length - 2
-#         if len(input_id) > max_length:
-#             gap = len(input_id) - max_length
-#             input_id = input_id[gap:]
+        max_length = self.max_seq_length - 2
+        if len(input_id) > max_length:
+            gap = len(input_id) - max_length
+            input_id = input_id[gap:]
 
         input_id = (
-            [self.src_tokenizer.cls_token_id]
-            + input_id
-            + [self.src_tokenizer.sep_token_id]
+                [self.src_tokenizer.cls_token_id]
+                + input_id
+                + [self.src_tokenizer.sep_token_id]
         )
         segment_id = [0] * len(input_id)
 
@@ -86,9 +89,30 @@ class TRADEPreprocessor(DSTPreprocessor):
 
     def collate_fn(self, batch):
         guids = [b.guid for b in batch]
-        input_ids = torch.LongTensor(
-            self.pad_ids([b.input_id for b in batch], self.src_tokenizer.pad_token_id)
-        )
+        if self.word_drop > 0.0: ### word_dropout / code reference : 전재열 캠퍼님
+            input_ids = []
+            for b in batch:
+                drop_mask = (
+                        np.array(
+                                    self.src_tokenizer.get_special_tokens_mask(b.input_id,
+                                                                               already_has_special_tokens=True)
+                        ) == 0
+                ).astype(int)
+                word_drop = np.random.binomial(drop_mask, self.word_drop)
+                input_id = [
+                    token_id if word_drop[i] == 0 else self.src_tokenizer.unk_token_id
+                    for i, token_id in enumerate(b.input_id)
+                ]
+                input_ids.append(input_id)
+            input_ids = torch.LongTensor(
+                self.pad_ids([b for b in input_ids],
+                             self.src_tokenizer.pad_token_id,
+                             max_length=512)
+            )
+        else:
+            input_ids = torch.LongTensor(
+                self.pad_ids([b.input_id for b in batch], self.src_tokenizer.pad_token_id)
+            )
         segment_ids = torch.LongTensor(
             self.pad_ids([b.segment_id for b in batch], self.src_tokenizer.pad_token_id)
         )
