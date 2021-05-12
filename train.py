@@ -23,6 +23,8 @@ import glob
 import re
 
 import torch.cuda.amp as amp
+import time
+import pickle
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -58,6 +60,7 @@ if __name__ == "__main__":
         default="dsksd/bert-ko-small-minimal",  #### Solution code에 있는 small-bert 사용
     )
     parser.add_argument("--model_type", type=str, default="BERT") # ["BERT", "GRU"]
+    parser.add_argument("--feature_model", type=str, default="TRADE") # ["SUMBT", "TRADE", "SomDST"]
 
     # Model Specific Argument
     parser.add_argument("--hidden_size", type=int, help="GRU의 hidden size", default=768)
@@ -92,15 +95,6 @@ if __name__ == "__main__":
     # Data Loading
     train_data_file = f"{args.data_dir}/train_dials.json"
     slot_meta = json.load(open(f"{args.data_dir}/slot_meta.json"))
-    train_data, dev_data, dev_labels = load_dataset(train_data_file)
-
-    train_examples = get_examples_from_dialogues(
-        train_data, user_first=False, dialogue_level=False
-    )
-
-    dev_examples = get_examples_from_dialogues(
-        dev_data, user_first=False, dialogue_level=False
-    )
 
     # Define Preprocessor
     tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
@@ -108,9 +102,37 @@ if __name__ == "__main__":
     args.vocab_size = len(tokenizer)
     args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr, yes, no
 
-    # Extracting Featrues
-    train_features = processor.convert_examples_to_features(train_examples)
-    dev_features = processor.convert_examples_to_features(dev_examples)
+    feature_path = '/opt/ml/code/p3-dst-chatting-day/features/' + args.feature_model
+    if os.path.exists(feature_path):
+        # 저장된 feature 피클 가져오기
+        with open(feature_path + '/train_features.pickle', 'rb') as f:
+            train_features = pickle.load(f)
+        with open(feature_path + '/dev_features.pickle', 'rb') as f:
+            dev_features = pickle.load(f)
+        print("Pickles brought!")
+    else:
+        train_data, dev_data, dev_labels = load_dataset(train_data_file)
+
+        train_examples = get_examples_from_dialogues(
+            train_data, user_first=False, dialogue_level=False
+        )
+
+        dev_examples = get_examples_from_dialogues(
+            dev_data, user_first=False, dialogue_level=False
+        )
+
+        # Extracting Featrues
+        train_features = processor.convert_examples_to_features(train_examples)
+        dev_features = processor.convert_examples_to_features(dev_examples)
+
+        # feature 피클 저장
+        os.makedirs(feature_path, exist_ok=True)
+        with open(feature_path + '/train_features.pickle', 'wb') as f:
+            pickle.dump(train_features, f)
+        with open(feature_path + '/dev_features.pickle', 'wb') as f:
+            pickle.dump(dev_features, f)
+        print("Pickles saved!")
+
 
     # Slot Meta tokenizing for the decoder initial inputs
     tokenized_slot_meta = []
@@ -137,7 +159,7 @@ if __name__ == "__main__":
         batch_size=args.train_batch_size,
         sampler=train_sampler,
         collate_fn=processor.collate_fn,
-        num_workers=4,
+        # num_workers=4,
     )
     print("# train:", len(train_data))
 
@@ -148,6 +170,7 @@ if __name__ == "__main__":
         batch_size=args.eval_batch_size,
         sampler=dev_sampler,
         collate_fn=processor.collate_fn,
+        # num_workers=4,
     )
     print("# dev:", len(dev_data))
 
@@ -180,10 +203,12 @@ if __name__ == "__main__":
     )
 
     best_score, best_checkpoint = 0, 0
+    train_time = time.time()
     for epoch in tqdm(range(n_epochs)):
         epoch_loss = 0.
         epoch_gen = 0.
         epoch_gate = 0.
+        
         model.train()
         for step, batch in enumerate(train_loader):
             input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [
@@ -230,9 +255,13 @@ if __name__ == "__main__":
                 print(
                     f"[{epoch}/{n_epochs}] [{step}/{len(train_loader)}] loss: {loss.item()} gen: {loss_1.item()} gate: {loss_2.item()}"
                 )
+            if step == 500:
+                break
+
 
         predictions = inference(model, dev_loader, processor, device)
         eval_result = _evaluation(predictions, dev_labels, slot_meta)
+        print(f"cost time : {time.time() - train_time}")
         for k, v in eval_result.items():
             print(f"{k}: {v}")
 
