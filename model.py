@@ -180,13 +180,11 @@ class SlotGenerator(nn.Module):
         # J, slot_meta : key : [domain, slot] ex> LongTensor([1,2])
         # J,2
         batch_size = encoder_output.size(0)
-        slot = torch.LongTensor(self.slot_embed_idx).to(input_ids.device)  ##
+        slot = torch.tensor(self.slot_embed_idx, dtype=torch.int64, device=input_ids.device)
         slot_e = torch.sum(self.embedding(slot), 1)  # J,d
         J = slot_e.size(0)
 
-        all_point_outputs = torch.zeros(batch_size, J, max_len, self.vocab_size).to(
-            input_ids.device
-        )
+        all_point_outputs = torch.zeros(batch_size, J, max_len, self.vocab_size, device=input_ids.device)
 
         # Parallel Decoding
         w = slot_e.repeat(batch_size, 1).unsqueeze(1)
