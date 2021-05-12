@@ -35,7 +35,11 @@ def increment_output_dir(output_path, exist_ok=False):
         n = max(i) + 1 if i else 2
         return f"{path}{n}"
 
+<<<<<<< HEAD
 # transformer-dst code
+=======
+# merge-test code
+>>>>>>> JAEWOOSUN/merge_test
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="/opt/ml/input/data/train_dataset")
