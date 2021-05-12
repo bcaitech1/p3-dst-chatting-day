@@ -21,6 +21,8 @@ from pathlib import Path
 import glob
 import re
 
+import torch.cuda.amp as amp
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -171,7 +173,6 @@ if __name__ == "__main__":
             input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [
                 b.to(device) if not isinstance(b, list) else b for b in batch
             ]
-            # print(target_ids.shape)
 
             # teacher forcing
             if (
@@ -182,25 +183,27 @@ if __name__ == "__main__":
             else:
                 tf = None
 
-            all_point_outputs, all_gate_outputs = model(
-                input_ids, segment_ids, input_masks, target_ids.size(-1), tf
-            )
+            # mixed precision
+            with amp.autocast():
+                all_point_outputs, all_gate_outputs = model(
+                    input_ids, segment_ids, input_masks, target_ids.size(-1), tf
+                )
 
-            # generation loss
-            loss_1 = loss_fnc_1(
-                all_point_outputs.contiguous(),
-                target_ids.contiguous().view(-1),
-                tokenizer.pad_token_id,
-            )
+                # generation loss
+                loss_1 = loss_fnc_1(
+                    all_point_outputs.contiguous(),
+                    target_ids.contiguous().view(-1),
+                    tokenizer.pad_token_id,
+                )
 
-            # gating loss
-            loss_2 = loss_fnc_2(
-                all_gate_outputs.contiguous().view(-1, args.n_gate),
-                gating_ids.contiguous().view(-1),
-            )
-            loss = loss_1 + loss_2
+                # gating loss
+                loss_2 = loss_fnc_2(
+                    all_gate_outputs.contiguous().view(-1, args.n_gate),
+                    gating_ids.contiguous().view(-1),
+                )
+                loss = loss_1 + loss_2
 
-            loss.backward()
+                loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
             optimizer.step()
             scheduler.step()
