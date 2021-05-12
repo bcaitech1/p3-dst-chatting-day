@@ -15,3 +15,6 @@ __pycache__
 
 # no model_stor file
 model_store/
+
+# no wandb results
+wandb/
