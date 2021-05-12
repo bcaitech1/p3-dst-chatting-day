@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+import wandb
 
 import torch
 import torch.nn as nn
@@ -69,7 +70,14 @@ if __name__ == "__main__":
                         help="만약 지정되면 기존의 hidden_size는 embedding dimension으로 취급되고, proj_dim이 GRU의 hidden_size로 사용됨. hidden_size보다 작아야 함.",
                         default=None)
     parser.add_argument("--teacher_forcing_ratio", type=float, default=0.5)
+    parser.add_argument("--use_wandb", type=bool, default=False)
     args = parser.parse_args()
+
+    if args.use_wandb:
+        # init wandb
+        wandb.init()
+        # wandb config update
+        wandb.config.update(args)
 
     # args.data_dir = os.environ['SM_CHANNEL_TRAIN']
     # args.model_dir = os.environ['SM_MODEL_DIR']
@@ -115,6 +123,10 @@ if __name__ == "__main__":
     print(f"Subword Embeddings is loaded from {args.model_name_or_path}")
     model.to(device)
     print("Model is initialized")
+
+    if args.use_wandb:
+        # wandb watch model
+        wandb.watch(model)
 
     train_data = WOSDataset(train_features)
     train_sampler = RandomSampler(train_data)
@@ -166,6 +178,9 @@ if __name__ == "__main__":
 
     best_score, best_checkpoint = 0, 0
     for epoch in tqdm(range(n_epochs)):
+        epoch_loss = 0.
+        epoch_gen = 0.
+        epoch_gate = 0.
         model.train()
         for step, batch in enumerate(train_loader):
             input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [
@@ -207,6 +222,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
 
             if step % 100 == 0:
+                epoch_loss, epoch_gen, epoch_gate = loss.item(), loss_1.item(), loss_2.item()
                 print(
                     f"[{epoch}/{n_epochs}] [{step}/{len(train_loader)}] loss: {loss.item()} gen: {loss_1.item()} gate: {loss_2.item()}"
                 )
@@ -215,6 +231,16 @@ if __name__ == "__main__":
         eval_result = _evaluation(predictions, dev_labels, slot_meta)
         for k, v in eval_result.items():
             print(f"{k}: {v}")
+
+        if args.use_wandb:
+            wandb.log({
+                "joint_goal_accuracy": eval_result["joint_goal_accuracy"],
+                "turn_slot_accuracy": eval_result["turn_slot_accuracy"],
+                "turn_slot_f1": eval_result["turn_slot_f1"],
+                "loss" : epoch_loss,
+                "gen" : epoch_gen,
+                "gate" : epoch_gate
+            })
 
         if best_score < eval_result['joint_goal_accuracy']:
             print("Update Best checkpoint!")
