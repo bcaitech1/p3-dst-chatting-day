@@ -159,7 +159,7 @@ if __name__ == "__main__":
         batch_size=args.train_batch_size,
         sampler=train_sampler,
         collate_fn=processor.collate_fn,
-        # num_workers=4,
+        num_workers=4,
     )
     print("# train:", len(train_data))
 
@@ -170,7 +170,7 @@ if __name__ == "__main__":
         batch_size=args.eval_batch_size,
         sampler=dev_sampler,
         collate_fn=processor.collate_fn,
-        # num_workers=4,
+        num_workers=4,
     )
     print("# dev:", len(dev_data))
 
