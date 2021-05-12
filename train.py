@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+import wandb
 
 import torch
 import torch.nn as nn
@@ -20,6 +21,8 @@ from preprocessor import TRADEPreprocessor
 from pathlib import Path
 import glob
 import re
+
+import torch.cuda.amp as amp
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -69,7 +72,14 @@ if __name__ == "__main__":
                         help="만약 지정되면 기존의 hidden_size는 embedding dimension으로 취급되고, proj_dim이 GRU의 hidden_size로 사용됨. hidden_size보다 작아야 함.",
                         default=None)
     parser.add_argument("--teacher_forcing_ratio", type=float, default=0.5)
+    parser.add_argument("--use_wandb", type=bool, default=False)
     args = parser.parse_args()
+
+    if args.use_wandb:
+        # init wandb
+        wandb.init()
+        # wandb config update
+        wandb.config.update(args)
 
     # args.data_dir = os.environ['SM_CHANNEL_TRAIN']
     # args.model_dir = os.environ['SM_MODEL_DIR']
@@ -96,7 +106,7 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
     processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=0.1) ## preprocessor에 word dropout 적용
     args.vocab_size = len(tokenizer)
-    args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr
+    args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr, yes, no
 
     # Extracting Featrues
     train_features = processor.convert_examples_to_features(train_examples)
@@ -116,6 +126,10 @@ if __name__ == "__main__":
     model.to(device)
     print("Model is initialized")
 
+    if args.use_wandb:
+        # wandb watch model
+        wandb.watch(model)
+
     train_data = WOSDataset(train_features)
     train_sampler = RandomSampler(train_data)
     train_loader = DataLoader(
@@ -133,6 +147,7 @@ if __name__ == "__main__":
         batch_size=args.eval_batch_size,
         sampler=dev_sampler,
         collate_fn=processor.collate_fn,
+        num_workers=4,
     )
     print("# dev:", len(dev_data))
 
@@ -166,12 +181,14 @@ if __name__ == "__main__":
 
     best_score, best_checkpoint = 0, 0
     for epoch in tqdm(range(n_epochs)):
+        epoch_loss = 0.
+        epoch_gen = 0.
+        epoch_gate = 0.
         model.train()
         for step, batch in enumerate(train_loader):
             input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [
                 b.to(device) if not isinstance(b, list) else b for b in batch
             ]
-            # print(target_ids.shape)
 
             # teacher forcing
             if (
@@ -182,31 +199,34 @@ if __name__ == "__main__":
             else:
                 tf = None
 
-            all_point_outputs, all_gate_outputs = model(
-                input_ids, segment_ids, input_masks, target_ids.size(-1), tf
-            )
+            # mixed precision
+            with amp.autocast():
+                all_point_outputs, all_gate_outputs = model(
+                    input_ids, segment_ids, input_masks, target_ids.size(-1), tf
+                )
 
-            # generation loss
-            loss_1 = loss_fnc_1(
-                all_point_outputs.contiguous(),
-                target_ids.contiguous().view(-1),
-                tokenizer.pad_token_id,
-            )
+                # generation loss
+                loss_1 = loss_fnc_1(
+                    all_point_outputs.contiguous(),
+                    target_ids.contiguous().view(-1),
+                    tokenizer.pad_token_id,
+                )
 
-            # gating loss
-            loss_2 = loss_fnc_2(
-                all_gate_outputs.contiguous().view(-1, args.n_gate),
-                gating_ids.contiguous().view(-1),
-            )
-            loss = loss_1 + loss_2
+                # gating loss
+                loss_2 = loss_fnc_2(
+                    all_gate_outputs.contiguous().view(-1, args.n_gate),
+                    gating_ids.contiguous().view(-1),
+                )
+                loss = loss_1 + loss_2
 
-            loss.backward()
+                loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
 
             if step % 100 == 0:
+                epoch_loss, epoch_gen, epoch_gate = loss.item(), loss_1.item(), loss_2.item()
                 print(
                     f"[{epoch}/{n_epochs}] [{step}/{len(train_loader)}] loss: {loss.item()} gen: {loss_1.item()} gate: {loss_2.item()}"
                 )
@@ -215,6 +235,16 @@ if __name__ == "__main__":
         eval_result = _evaluation(predictions, dev_labels, slot_meta)
         for k, v in eval_result.items():
             print(f"{k}: {v}")
+
+        if args.use_wandb:
+            wandb.log({
+                "joint_goal_accuracy": eval_result["joint_goal_accuracy"],
+                "turn_slot_accuracy": eval_result["turn_slot_accuracy"],
+                "turn_slot_f1": eval_result["turn_slot_f1"],
+                "loss" : epoch_loss,
+                "gen" : epoch_gen,
+                "gate" : epoch_gate
+            })
 
         if best_score < eval_result['joint_goal_accuracy']:
             print("Update Best checkpoint!")

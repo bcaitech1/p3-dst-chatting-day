@@ -98,10 +98,10 @@ class TRADEPreprocessor(DSTPreprocessor):
             input_ids = []
             for b in batch:
                 drop_mask = (
-                        np.array(
-                                    self.src_tokenizer.get_special_tokens_mask(b.input_id,
-                                                                               already_has_special_tokens=True)
-                        ) == 0
+                    np.array(
+                        self.src_tokenizer.get_special_tokens_mask(b.input_id,
+                                                                   already_has_special_tokens=True)
+                    ) == 0
                 ).astype(int)
                 word_drop = np.random.binomial(drop_mask, self.word_drop)
                 input_id = [
