@@ -54,6 +54,7 @@ if __name__ == "__main__":
         help="Subword Vocab만을 위한 huggingface model",
         default="dsksd/bert-ko-small-minimal",  #### Solution code에 있는 small-bert 사용
     )
+    parser.add_argument("--model_type", type=str, default="BERT") # ["BERT", "GRU"]
 
     # Model Specific Argument
     parser.add_argument("--hidden_size", type=int, help="GRU의 hidden size", default=768)
@@ -109,7 +110,7 @@ if __name__ == "__main__":
         )
 
     # Model 선언
-    model = TRADE(args, tokenized_slot_meta, use_bert=True)
+    model = TRADE(args, tokenized_slot_meta)
     model.set_subword_embedding(args.model_name_or_path)  # Subword Embedding 초기화
     print(f"Subword Embeddings is loaded from {args.model_name_or_path}")
     model.to(device)
