@@ -181,6 +181,7 @@ def prepare_dataset(data_path, tokenizer, slot_meta,
             dialog_history.append(last_uttr)
 
             if turn2["state"]:
+                # {"관광 - 장소" : "서울 중앙", }
                 turn_dialog_state = [d_s_v.split("-") for d_s_v in turn2["state"]]
                 turn_dialog_state = {d_s_v[0] + "-" + d_s_v[1]: d_s_v[2] for d_s_v in turn_dialog_state}
                 turn_domain = turn2["state"][-1].split("-")[0]
@@ -388,6 +389,7 @@ class TrainingInstance:
             diag = [w if word_drop[i] == 0 else '[UNK]' for i, w in enumerate(diag)]
 
         self.diag_len = len(diag)
+
 
         # FullBert
         self.input_id_p = tokenizer.convert_tokens_to_ids(diag + state)  # For predictor
