@@ -277,8 +277,6 @@ class SUMBTDataset(Dataset):
             label_id = []
             label_info = 'label: '
             for i, label in enumerate(example.label):
-                if label == 'dontcare':
-                    label = 'do not care'
                 label_id.append(label_map[i][label])
                 label_info += '%s (id = %d) ' % (label, label_map[i][label])
 
@@ -405,8 +403,6 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         label_id = []
         label_info = 'label: '
         for i, label in enumerate(example.label):
-            if label == 'dontcare':
-                label = 'do not care'
             label_id.append(label_map[i][label])
             label_info += '%s (id = %d) ' % (label, label_map[i][label])
 
@@ -463,7 +459,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     return all_input_ids, all_input_len, all_label_ids, all_update
 
 
-def get_label_embedding(labels, max_seq_length, tokenizer, device):
+def get_label_embedding(labels, max_seq_length, tokenizer, device) -> object:
     features = []
     for label in labels:
         label_tokens = ["[CLS]"] + tokenizer.tokenize(label) + ["[SEP]"]
@@ -556,7 +552,7 @@ if __name__ == "__main__":
                              "Sequences longer than this will be truncated, and sequences shorter \n"
                              "than this will be padded.")
     parser.add_argument("--max_label_length",
-                        default=32,
+                        default=60,
                         type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
