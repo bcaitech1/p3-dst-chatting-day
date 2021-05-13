@@ -3,7 +3,9 @@ import json
 import os
 import random
 import wandb
+import sys
 
+# TRADE baseline
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -17,6 +19,14 @@ from evaluation import _evaluation
 from inference import inference
 from model import TRADE, masked_cross_entropy_for_value
 from preprocessor import TRADEPreprocessor
+
+# Transformer-dst baseline (added)
+from model import TransformerDST
+from transformer_dst_utils.data_utils import prepare_dataset as transformer_dst_prepare_dataset
+from transformer_dst_utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
+from transformer_dst_utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
+from transformer_dst_utils.ckpt_utils import download_ckpt, convert_ckpt_compatible
+from transformer_dst_utils.evaluation import model_evaluation
 
 from pathlib import Path
 import glob
@@ -72,6 +82,15 @@ if __name__ == "__main__":
                         default=None)
     parser.add_argument("--teacher_forcing_ratio", type=float, default=0.5)
     parser.add_argument("--use_wandb", type=bool, default=False)
+
+    # op code
+    parser.add_argument("--op_code", type=int, default=4)
+
+    # model
+    parser.add_argument("--model", type=str,
+                        help="TRADE / SOM-DST / TRANS / CHAN",
+                        default="TRADE")
+
     args = parser.parse_args()
 
     if args.use_wandb:
@@ -93,6 +112,7 @@ if __name__ == "__main__":
     slot_meta = json.load(open(f"{args.data_dir}/slot_meta.json"))
     train_data, dev_data, dev_labels = load_dataset(train_data_file)
 
+    # if args.model == "TRADE":
     train_examples = get_examples_from_dialogues(
         train_data, user_first=False, dialogue_level=False
     )
