@@ -152,9 +152,9 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 class BertConfig(PretrainedConfig):
     r"""
         :class:`~pytorch_transformers.BertConfig` is the configuration class to store the configuration of a
-        `BertModel`.
+        `CustomBertModel`.
         Arguments:
-            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `BertModel`.
+            vocab_size_or_config_json_file: Vocabulary size of `inputs_ids` in `CustomBertModel`.
             hidden_size: Size of the encoder layers and the pooler layer.
             num_hidden_layers: Number of hidden layers in the Transformer encoder.
             num_attention_heads: Number of attention heads for each attention layer in
@@ -171,7 +171,7 @@ class BertConfig(PretrainedConfig):
                 ever be used with. Typically set this to something large just in case
                 (e.g., 512 or 1024 or 2048).
             type_vocab_size: The vocabulary size of the `token_type_ids` passed into
-                `BertModel`.
+                `CustomBertModel`.
             initializer_range: The sttdev of the truncated_normal_initializer for
                 initializing all weight matrices.
             layer_norm_eps: The epsilon used by LayerNorm.
@@ -317,7 +317,7 @@ class BertSelfAttention(nn.Module):
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-        # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
+        # Apply the attention mask is (precomputed for all layers in CustomBertModel forward() function)
 
         try:
             attention_scores = attention_scores + attention_mask
@@ -510,9 +510,9 @@ class BertPredictionHeadTransform(nn.Module):
         return hidden_states
 
 
-class BertLMPredictionHead(nn.Module):
+class CustomBertLMPredictionHead(nn.Module):
     def __init__(self, config, bert_model_embedding_weights=None):
-        super(BertLMPredictionHead, self).__init__()
+        super(CustomBertLMPredictionHead, self).__init__()
         self.transform = BertPredictionHeadTransform(config)
 
         if bert_model_embedding_weights is None:
@@ -539,7 +539,7 @@ class BertLMPredictionHead(nn.Module):
 class BertOnlyMLMHead(nn.Module):
     def __init__(self, config):
         super(BertOnlyMLMHead, self).__init__()
-        self.predictions = BertLMPredictionHead(config)
+        self.predictions = CustomBertLMPredictionHead(config)
 
     def forward(self, sequence_output):
         prediction_scores = self.predictions(sequence_output)
@@ -556,10 +556,10 @@ class BertOnlyNSPHead(nn.Module):
         return seq_relationship_score
 
 
-class BertPreTrainingHeads(nn.Module):
+class CustomBertPreTrainingHeads(nn.Module):
     def __init__(self, config):
-        super(BertPreTrainingHeads, self).__init__()
-        self.predictions = BertLMPredictionHead(config)
+        super(CustomBertPreTrainingHeads, self).__init__()
+        self.predictions = CustomBertLMPredictionHead(config)
         self.seq_relationship = nn.Linear(config.hidden_size, 2)
 
     def forward(self, sequence_output, pooled_output):
@@ -568,7 +568,7 @@ class BertPreTrainingHeads(nn.Module):
         return prediction_scores, seq_relationship_score
 
 
-class BertPreTrainedModel(PreTrainedModel):
+class CustomBertPreTrainedModel(PreTrainedModel):
     """ An abstract class to handle weights initialization and
         a simple interface for dowloading and loading pretrained models.
     """
@@ -578,7 +578,7 @@ class BertPreTrainedModel(PreTrainedModel):
     base_model_prefix = "bert"
 
     def __init__(self, *inputs, **kwargs):
-        super(BertPreTrainedModel, self).__init__(*inputs, **kwargs)
+        super(CustomBertPreTrainedModel, self).__init__(*inputs, **kwargs)
 
     def init_weights(self, module):
         """ Initialize the weights.
@@ -647,7 +647,7 @@ BERT_INPUTS_DOCSTRING = r"""
 
 @add_start_docstrings("The bare Bert Model transformer outputing raw hidden-states without any specific head on top.",
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertModel(BertPreTrainedModel):
+class CustomBertModel(CustomBertPreTrainedModel):
     r"""
     Outputs: `Tuple` comprising various elements depending on the configuration (config) and inputs:
         **last_hidden_state**: ``torch.FloatTensor`` of shape ``(batch_size, sequence_length, hidden_size)``
@@ -668,14 +668,14 @@ class BertModel(BertPreTrainedModel):
             Attentions weights after the attention softmax, used to compute the weighted average in the self-attention heads.
     Examples::
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        model = BertModel.from_pretrained('bert-base-uncased')
+        model = CustomBertModel.from_pretrained('bert-base-uncased')
         input_ids = torch.tensor(tokenizer.encode("Hello, my dog is cute")).unsqueeze(0)  # Batch size 1
         outputs = model(input_ids)
         last_hidden_states = outputs[0]  # The last hidden-state is the first element of the output tuple
     """
 
     def __init__(self, config, type_vocab_size=None):
-        super(BertModel, self).__init__(config)
+        super(CustomBertModel, self).__init__(config)
 
         self.embeddings = BertEmbeddings(config, type_vocab_size=type_vocab_size)
         self.encoder = BertEncoder(config)
@@ -756,7 +756,7 @@ class BertModel(BertPreTrainedModel):
 @add_start_docstrings("""Bert Model with two heads on top as done during the pre-training:
     a `masked language modeling` head and a `next sentence prediction (classification)` head. """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForPreTraining(BertPreTrainedModel):
+class BertForPreTraining(CustomBertPreTrainedModel):
     r"""
         **masked_lm_labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
             Labels for computing the masked language modeling loss.
@@ -793,8 +793,8 @@ class BertForPreTraining(BertPreTrainedModel):
     def __init__(self, config):
         super(BertForPreTraining, self).__init__(config)
 
-        self.bert = BertModel(config)
-        self.cls = BertPreTrainingHeads(config)
+        self.bert = CustomBertModel(config)
+        self.cls = CustomBertPreTrainingHeads(config)
 
         self.apply(self.init_weights)
         self.tie_weights()
@@ -829,7 +829,7 @@ class BertForPreTraining(BertPreTrainedModel):
 
 @add_start_docstrings("""Bert Model with a `language modeling` head on top. """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForMaskedLM(BertPreTrainedModel):
+class BertForMaskedLM(CustomBertPreTrainedModel):
     r"""
         **masked_lm_labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
             Labels for computing the masked language modeling loss.
@@ -859,7 +859,7 @@ class BertForMaskedLM(BertPreTrainedModel):
     def __init__(self, config):
         super(BertForMaskedLM, self).__init__(config)
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.cls = BertOnlyMLMHead(config)
 
         self.apply(self.init_weights)
@@ -891,7 +891,7 @@ class BertForMaskedLM(BertPreTrainedModel):
 
 @add_start_docstrings("""Bert Model with a `next sentence prediction (classification)` head on top. """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForNextSentencePrediction(BertPreTrainedModel):
+class BertForNextSentencePrediction(CustomBertPreTrainedModel):
     r"""
         **next_sentence_label**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
             Labels for computing the next sequence prediction (classification) loss. Input should be a sequence pair (see ``input_ids`` docstring)
@@ -921,7 +921,7 @@ class BertForNextSentencePrediction(BertPreTrainedModel):
     def __init__(self, config):
         super(BertForNextSentencePrediction, self).__init__(config)
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.cls = BertOnlyNSPHead(config)
 
         self.apply(self.init_weights)
@@ -946,7 +946,7 @@ class BertForNextSentencePrediction(BertPreTrainedModel):
 @add_start_docstrings("""Bert Model transformer with a sequence classification/regression head on top (a linear layer on top of
     the pooled output) e.g. for GLUE tasks. """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForSequenceClassification(BertPreTrainedModel):
+class BertForSequenceClassification(CustomBertPreTrainedModel):
     r"""
         **labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
             Labels for computing the sequence classification/regression loss.
@@ -978,7 +978,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         super(BertForSequenceClassification, self).__init__(config)
         self.num_labels = config.num_labels
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, self.config.num_labels)
 
@@ -1011,7 +1011,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
 @add_start_docstrings("""Bert Model with a multiple choice classification head on top (a linear layer on top of
     the pooled output and a softmax) e.g. for RocStories/SWAG tasks. """,
                       BERT_START_DOCSTRING)
-class BertForMultipleChoice(BertPreTrainedModel):
+class BertForMultipleChoice(CustomBertPreTrainedModel):
     r"""
     Inputs:
         **input_ids**: ``torch.LongTensor`` of shape ``(batch_size, num_choices, sequence_length)``:
@@ -1075,7 +1075,7 @@ class BertForMultipleChoice(BertPreTrainedModel):
     def __init__(self, config):
         super(BertForMultipleChoice, self).__init__(config)
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, 1)
 
@@ -1110,7 +1110,7 @@ class BertForMultipleChoice(BertPreTrainedModel):
 @add_start_docstrings("""Bert Model with a token classification head on top (a linear layer on top of
     the hidden-states output) e.g. for Named-Entity-Recognition (NER) tasks. """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForTokenClassification(BertPreTrainedModel):
+class BertForTokenClassification(CustomBertPreTrainedModel):
     r"""
         **labels**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size, sequence_length)``:
             Labels for computing the token classification loss.
@@ -1140,7 +1140,7 @@ class BertForTokenClassification(BertPreTrainedModel):
         super(BertForTokenClassification, self).__init__(config)
         self.num_labels = config.num_labels
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
 
@@ -1174,7 +1174,7 @@ class BertForTokenClassification(BertPreTrainedModel):
 @add_start_docstrings("""Bert Model with a span classification head on top for extractive question-answering tasks like SQuAD (a linear layers on top of
     the hidden-states output to compute `span start logits` and `span end logits`). """,
                       BERT_START_DOCSTRING, BERT_INPUTS_DOCSTRING)
-class BertForQuestionAnswering(BertPreTrainedModel):
+class BertForQuestionAnswering(CustomBertPreTrainedModel):
     r"""
         **start_positions**: (`optional`) ``torch.LongTensor`` of shape ``(batch_size,)``:
             Labels for position (index) of the start of the labelled span for computing the token classification loss.
@@ -1212,7 +1212,7 @@ class BertForQuestionAnswering(BertPreTrainedModel):
         super(BertForQuestionAnswering, self).__init__(config)
         self.num_labels = config.num_labels
 
-        self.bert = BertModel(config)
+        self.bert = CustomBertModel(config)
         self.qa_outputs = nn.Linear(config.hidden_size, config.num_labels)
 
         self.apply(self.init_weights)
