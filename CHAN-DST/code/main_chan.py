@@ -28,6 +28,61 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def eval_all_accs(pred_slot, labels, accuracies):
+
+    def _eval_acc(_pred_slot, _labels):
+        slot_dim = _labels.size(-1)
+        accuracy = (_pred_slot == _labels).view(-1, slot_dim)
+        num_turn = torch.sum(_labels[:, :, 0].view(-1) > -1, 0).float()
+        num_data = torch.sum(_labels > -1).float()
+        # joint accuracy
+        joint_acc = sum(torch.sum(accuracy, 1) / slot_dim).float()
+        # slot accuracy
+        slot_acc = torch.sum(accuracy).float()
+        return joint_acc, slot_acc, num_turn, num_data
+
+    # 7 domains
+    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot, labels)
+    accuracies['joint7'] += joint_acc
+    accuracies['slot7'] += slot_acc
+    accuracies['num_turn'] += num_turn
+    accuracies['num_slot7'] += num_data
+
+    # restaurant domain
+    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot[:,:,18:25], labels[:,:,18:25])
+    accuracies['joint_rest'] += joint_acc
+    accuracies['slot_rest'] += slot_acc
+    accuracies['num_slot_rest'] += num_data
+
+    pred_slot5 = torch.cat((pred_slot[:,:,0:3], pred_slot[:,:,8:]), 2)
+    label_slot5 = torch.cat((labels[:,:,0:3], labels[:,:,8:]), 2)
+
+    # 5 domains (excluding bus and hotel domain)
+    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot5, label_slot5)
+    accuracies['joint5'] += joint_acc
+    accuracies['slot5'] += slot_acc
+    accuracies['num_slot5'] += num_data
+
+    return accuracies
+
+def save_configure(args, num_labels, ontology):
+    with open(os.path.join(args.output_dir, "config.json"),'w') as outfile:
+        data = { "hidden_dim": args.hidden_dim,
+                "num_rnn_layers": args.num_rnn_layers,
+                "zero_init_rnn": args.zero_init_rnn,
+                "max_seq_length": args.max_seq_length,
+                "max_label_length": args.max_label_length,
+                "num_labels": num_labels,
+                "attn_head": args.attn_head,
+                 "distance_metric": args.distance_metric,
+                 "fix_utterance_encoder": args.fix_utterance_encoder,
+                 "task_name": args.task_name,
+                 "bert_dir": args.bert_dir,
+                 "bert_model": args.bert_model,
+                 "do_lower_case": args.do_lower_case,
+                 "ontology": ontology}
+        json.dump(data, outfile, indent=4)
+
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
 
@@ -54,6 +109,42 @@ def chan_dst_examples(data_dir, dataset):
     ontology = json.load(open(f"{data_dir}/ontology.json"))
     slot_meta = json.load(open(f"{data_dir}/slot_meta.json"))
     train_dials = dataset
+
+    ontology_label = {}
+    for idx, i in enumerate(ontology.keys()):
+        ontology_label[i] = idx
+
+    examples = []
+    for dials in train_dials:
+        dial_idx = dials["dialogue_idx"].split(":")[0]
+        dial_idx = dial_idx.split('-')
+        dial_idx = '_'.join(dial_idx)
+        guid = "%s-%s" % ("train", dial_idx)
+        turn = 0
+        label = ["none" for i in range(45)]
+        update = [0 for i in range(45)]
+        for idx, dial in enumerate(dials["dialogue"]):
+            if dial['role'] == 'user':
+                continue
+            text_a = dials['dialogue'][idx - 1]['text']
+            text_b = dial['text']
+            guid_tmp = f"{guid}-{turn}"
+            turn += 1
+            for state in dials['dialogue'][idx - 1]['state']:
+                d, s, v = state.split('-')
+                if label[ontology_label[f"{d}-{s}"]] == 'none':
+                    label[ontology_label[f"{d}-{s}"]] = v
+                    update[ontology_label[f"{d}-{s}"]] = 1
+                else:
+                    update[ontology_label[f"{d}-{s}"]] = 0
+            examples.append(
+                deepcopy(InputExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
+    return examples
+
+def chan_dst_test():
+    ontology = json.load(open("/opt/ml/input/train_dataset/ontology.json"))
+    slot_meta = json.load(open("/opt/ml/input/eval_dataset/slot_meta.json"))
+    train_dials = json.load(open("/opt/ml/input/eval_dataset/eval_dials.json"))
 
     ontology_label = {}
     for idx, i in enumerate(ontology.keys()):
@@ -583,6 +674,7 @@ if __name__ == "__main__":
                         action='store_true',
                         help="Whether to run training.")
     parser.add_argument("--do_eval",
+                        default=True,
                         action='store_true',
                         help="Whether to run eval on the test set.")
     parser.add_argument("--do_eval_best_acc",
@@ -620,7 +712,7 @@ if __name__ == "__main__":
                         type=float,
                         help="The initial learning rate for BertAdam.")
     parser.add_argument("--num_train_epochs",
-                        default=300,
+                        default=1,
                         type=float,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--patience",
@@ -772,7 +864,7 @@ if __name__ == "__main__":
 
         dev_dataset = TensorDataset(all_input_ids_dev, all_input_len_dev, all_label_ids_dev, all_update_dev)
         dev_sampler = SequentialSampler(dev_dataset)
-        dev_dataloader = DataLoader(dev_dataset, sampler=dev_sampler, batch_size=args.dev_batch_size, drop_last=False, num_workers=8, collate_fn=lambda x: collate_fn(x))
+        dev_dataloader = DataLoader(dev_dataset, sampler=dev_sampler, batch_size=args.dev_batch_size, drop_last=False, collate_fn=lambda x: collate_fn(x))
 
     logger.info("Loaded data!")
 
@@ -910,19 +1002,6 @@ if __name__ == "__main__":
                     optimizer.backward(loss)
                 else:
                     loss.backward()
-
-                # tensrboard logging
-                if summary_writer is not None:
-                    summary_writer.add_scalar("Epoch", epoch, global_step)
-                    summary_writer.add_scalar("Train/Loss", loss, global_step)
-                    summary_writer.add_scalar("Train/JointAcc", acc, global_step)
-                    summary_writer.add_scalar("Train/main_loss", tup[0], global_step)
-                    summary_writer.add_scalar("Train/update_loss", tup[1], global_step)
-                    summary_writer.add_scalar("Train/update_acc", tup[2], global_step)
-                    if n_gpu == 1:
-                        for i, slot in enumerate(get_target_slot(args.data_dir)):
-                            summary_writer.add_scalar("Train/Loss_%s" % slot.replace(' ','_'), loss_slot[i], global_step)
-                            summary_writer.add_scalar("Train/Acc_%s" % slot.replace(' ','_'), acc_slot[i], global_step)
 
                 tr_loss += loss.item()
                 nb_tr_examples += input_ids.size(0)
@@ -1083,7 +1162,7 @@ if __name__ == "__main__":
     # Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
 
-        eval_examples = processor.get_test_examples(args.data_dir, accumulation=accumulation)
+        eval_examples = chan_dst_test()
         #all_input_ids, all_input_len, all_label_ids, all_update = convert_examples_to_features(
         #    eval_examples, label_list, args.max_seq_length, tokenizer, args.max_turn_length)
         #all_input_ids, all_input_len, all_label_ids = all_input_ids.to(device), all_input_len.to(device), all_label_ids.to(device)
@@ -1115,7 +1194,7 @@ if __name__ == "__main__":
                 input_ids = input_ids.unsqueeze(0)
                 input_len = input_len.unsqueeze(0)
                 label_ids = label_ids.unsuqeeze(0)
-                update = udpate.unsqueeze(0)
+                update = update.unsqueeze(0)
 
             with torch.no_grad():
                 if n_gpu == 1:
@@ -1193,57 +1272,3 @@ if __name__ == "__main__":
                 (accuracies['slot_rest'] / accuracies['num_slot_rest']).item()
             ))
 
-def eval_all_accs(pred_slot, labels, accuracies):
-
-    def _eval_acc(_pred_slot, _labels):
-        slot_dim = _labels.size(-1)
-        accuracy = (_pred_slot == _labels).view(-1, slot_dim)
-        num_turn = torch.sum(_labels[:, :, 0].view(-1) > -1, 0).float()
-        num_data = torch.sum(_labels > -1).float()
-        # joint accuracy
-        joint_acc = sum(torch.sum(accuracy, 1) / slot_dim).float()
-        # slot accuracy
-        slot_acc = torch.sum(accuracy).float()
-        return joint_acc, slot_acc, num_turn, num_data
-
-    # 7 domains
-    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot, labels)
-    accuracies['joint7'] += joint_acc
-    accuracies['slot7'] += slot_acc
-    accuracies['num_turn'] += num_turn
-    accuracies['num_slot7'] += num_data
-
-    # restaurant domain
-    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot[:,:,18:25], labels[:,:,18:25])
-    accuracies['joint_rest'] += joint_acc
-    accuracies['slot_rest'] += slot_acc
-    accuracies['num_slot_rest'] += num_data
-
-    pred_slot5 = torch.cat((pred_slot[:,:,0:3], pred_slot[:,:,8:]), 2)
-    label_slot5 = torch.cat((labels[:,:,0:3], labels[:,:,8:]), 2)
-
-    # 5 domains (excluding bus and hotel domain)
-    joint_acc, slot_acc, num_turn, num_data = _eval_acc(pred_slot5, label_slot5)
-    accuracies['joint5'] += joint_acc
-    accuracies['slot5'] += slot_acc
-    accuracies['num_slot5'] += num_data
-
-    return accuracies
-
-def save_configure(args, num_labels, ontology):
-    with open(os.path.join(args.output_dir, "config.json"),'w') as outfile:
-        data = { "hidden_dim": args.hidden_dim,
-                "num_rnn_layers": args.num_rnn_layers,
-                "zero_init_rnn": args.zero_init_rnn,
-                "max_seq_length": args.max_seq_length,
-                "max_label_length": args.max_label_length,
-                "num_labels": num_labels,
-                "attn_head": args.attn_head,
-                 "distance_metric": args.distance_metric,
-                 "fix_utterance_encoder": args.fix_utterance_encoder,
-                 "task_name": args.task_name,
-                 "bert_dir": args.bert_dir,
-                 "bert_model": args.bert_model,
-                 "do_lower_case": args.do_lower_case,
-                 "ontology": ontology}
-        json.dump(data, outfile, indent=4)
