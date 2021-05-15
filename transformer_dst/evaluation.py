@@ -1,9 +1,9 @@
-from transformer_dst_utils.data_utils import prepare_dataset, MultiWozDataset, wrap_into_tensor
-from transformer_dst_utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
-from transformer_dst_utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
+from utils.data_utils import prepare_dataset, MultiWozDataset, wrap_into_tensor
+from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
+from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 from pytorch_transformers import BertTokenizer, BertConfig
 
-from model import TransformerDST
+from TransformerDSTmodel import TransformerDST
 import torch.nn as nn
 import torch
 import torch.nn.functional as F

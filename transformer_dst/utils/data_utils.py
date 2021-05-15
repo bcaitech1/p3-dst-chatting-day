@@ -2,11 +2,11 @@ import sys
 import numpy as np
 import json
 from torch.utils.data import Dataset
+from collections import defaultdict
 import torch
 import random
 import re
 from copy import deepcopy
-from .fix_label import fix_general_label_error
 
 flatten = lambda x: [i for s in x for i in s]
 EXPERIMENT_DOMAINS = ["관광", "숙소", "식당", "지하철", "택시"]
@@ -19,6 +19,47 @@ OP_SET = {
     '4': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3},
     '6': {'delete': 0, 'update': 1, 'dontcare': 2, 'carryover': 3, 'yes': 4, 'no': 5}
 }
+
+def load_dataset(dataset_path, dev_split=0.1):
+    data = json.load(open(dataset_path))
+    num_data = len(data)
+    num_dev = int(num_data * dev_split)
+    if not num_dev:
+        return data, []  # no dev dataset
+
+    dom_mapper = defaultdict(list)
+    for d in data:
+        dom_mapper[len(d["domains"])].append(d["dialogue_idx"])
+
+    num_per_domain_trainsition = int(num_dev / 3) # 3 왜나누는거지?
+    dev_idx = []
+    for v in dom_mapper.values():
+        idx = random.sample(v, num_per_domain_trainsition)
+        dev_idx.extend(idx)
+
+    train_data, dev_data = [], []
+    for d in data:
+        if d["dialogue_idx"] in dev_idx:
+            dev_data.append(d)
+        else:
+            train_data.append(d)
+
+    # dev_labels = {}
+    # for dialogue in dev_data:
+    #     d_idx = 0
+    #     guid = dialogue["dialogue_idx"]
+    #     for idx, turn in enumerate(dialogue["dialogue"]):
+    #         if turn["role"] != "user":
+    #             continue
+    #
+    #         state = turn.pop("state")
+    #
+    #         guid_t = f"{guid}-{d_idx}"
+    #         d_idx += 1
+    #
+    #         dev_labels[guid_t] = state
+
+    return train_data, dev_data
 
 
 def make_turn_label(slot_meta, last_dialog_state, turn_dialog_state,
@@ -136,9 +177,14 @@ def make_slot_meta(ontology):
     return sorted(meta), change
 
 
-def prepare_dataset(data_path, tokenizer, slot_meta,
+def prepare_dataset(data_path, data_list, tokenizer, slot_meta,
                     max_seq_length, n_history=1, diag_level=False, op_code='4'):
-    dials = json.load(open(data_path))
+
+    if data_list is not None:
+        dials = data_list
+    else:
+        dials = json.load(open(data_path))
+
     data = []
     domain_counter = {}
     max_resp_len, max_value_len = 0, 0

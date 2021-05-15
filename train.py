@@ -20,14 +20,6 @@ from inference import inference
 from model import TRADE, masked_cross_entropy_for_value
 from preprocessor import TRADEPreprocessor
 
-# Transformer-dst baseline (added)
-from model import TransformerDST
-from transformer_dst_utils.data_utils import prepare_dataset as transformer_dst_prepare_dataset
-from transformer_dst_utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
-from transformer_dst_utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
-from transformer_dst_utils.ckpt_utils import download_ckpt, convert_ckpt_compatible
-from transformer_dst_utils.evaluation import model_evaluation
-
 from pathlib import Path
 import glob
 import re
@@ -69,7 +61,7 @@ if __name__ == "__main__":
         default="dsksd/bert-ko-small-minimal",  #### Solution code에 있는 small-bert 사용
     )
     parser.add_argument("--model_type", type=str, default="BERT") # ["BERT", "GRU"]
-    parser.add_argument("--feature_model", type=str, default="TRADE") # ["SUMBT", "TRADE", "SomDST"]
+    parser.add_argument("--feature_model", type=str, default="TRADE", help="TRADE / SUMBT / SomDST / TransformerDST / ChanDST") # ["SUMBT", "TRADE", "SomDST"]
 
     # Model Specific Argument
     parser.add_argument("--hidden_size", type=int, help="GRU의 hidden size", default=768)
@@ -88,11 +80,6 @@ if __name__ == "__main__":
 
     # op code
     parser.add_argument("--op_code", type=int, default=4)
-
-    # model
-    parser.add_argument("--model", type=str,
-                        help="TRADE / SOM-DST / TRANS / CHAN",
-                        default="TRADE")
 
     args = parser.parse_args()
 
