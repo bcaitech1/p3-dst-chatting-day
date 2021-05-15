@@ -20,27 +20,17 @@ class OntologyDSTFeature:
     num_turn: int
     target_ids: Optional[List[int]]
 
+
 @dataclass
 class CHANExample(object):
-    """A single training/test example for simple sequence classification."""
 
-    def __init__(self, guid, text_a, text_b=None, label=None, update=None):
-        """Constructs a InputExample.
+    guid: str
+    text_a: str
+    text_b: str
+    label: List[str]
+    update: List[int]
 
-        Args:
-            guid: Unique id for the example.
-            text_a: string. The untokenized text of the first sequence. For single
-            sequence tasks, only this sequence must be specified.
-            text_b: (Optional) string. The untokenized text of the second sequence.
-            Only must be specified for sequence pair tasks.
-            label: (Optional) string. The label of the example. This should be
-            specified for train and dev examples, but not for test examples.
-        """
-        self.guid : str
-        self.text_a : str
-        self.text_b : str
-        self.label : List[str]
-        self.update : List[int]
+
 @dataclass
 class OpenVocabDSTFeature:
     guid: str
@@ -61,6 +51,7 @@ class WOSDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx]
 
+
 def load_chan_dataset(dataset_path, dev_split=0.1):
     data = json.load(open(dataset_path))
     num_data = len(data)
@@ -72,7 +63,7 @@ def load_chan_dataset(dataset_path, dev_split=0.1):
     for d in data:
         dom_mapper[len(d["domains"])].append(d["dialogue_idx"])
 
-    num_per_domain_trainsition = int(num_dev / 3) # 3 왜나누는거지?
+    num_per_domain_trainsition = int(num_dev / 3)  # 3 왜나누는거지?
     dev_idx = []
     for v in dom_mapper.values():
         idx = random.sample(v, num_per_domain_trainsition)
@@ -85,6 +76,8 @@ def load_chan_dataset(dataset_path, dev_split=0.1):
         else:
             train_data.append(d)
     return train_data, dev_data
+
+
 def load_dataset(dataset_path, dev_split=0.1):
     data = json.load(open(dataset_path))
     num_data = len(data)
@@ -96,7 +89,7 @@ def load_dataset(dataset_path, dev_split=0.1):
     for d in data:
         dom_mapper[len(d["domains"])].append(d["dialogue_idx"])
 
-    num_per_domain_trainsition = int(num_dev / 3) # 3 왜나누는거지?
+    num_per_domain_trainsition = int(num_dev / 3)  # 3 왜나누는거지?
     dev_idx = []
     for v in dom_mapper.values():
         idx = random.sample(v, num_per_domain_trainsition)
@@ -273,8 +266,8 @@ class DSTPreprocessor:
             n, l = array.size()
             pad = torch.zeros(n, (max_length - l))
             pad[
-                :,
-                :,
+            :,
+            :,
             ] = padding
             pad = pad.long()
             m = torch.cat([array, pad], -1)
