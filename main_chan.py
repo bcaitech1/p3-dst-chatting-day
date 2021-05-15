@@ -8,7 +8,6 @@ from tqdm import tqdm, trange
 import json
 from typing import List, Optional, Union
 from copy import deepcopy
-import pdb
 from collections import defaultdict
 
 import numpy as np
@@ -21,7 +20,8 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 from tensorboardX import SummaryWriter
 
-from model import BeliefTracker
+from model_chan import BeliefTracker
+from data_utils import CHANExample, load_chan_dataset
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -83,26 +83,26 @@ def save_configure(args, num_labels, ontology):
                  "ontology": ontology}
         json.dump(data, outfile, indent=4)
 
-class InputExample(object):
-    """A single training/test example for simple sequence classification."""
-
-    def __init__(self, guid, text_a, text_b=None, label=None, update=None):
-        """Constructs a InputExample.
-
-        Args:
-            guid: Unique id for the example.
-            text_a: string. The untokenized text of the first sequence. For single
-            sequence tasks, only this sequence must be specified.
-            text_b: (Optional) string. The untokenized text of the second sequence.
-            Only must be specified for sequence pair tasks.
-            label: (Optional) string. The label of the example. This should be
-            specified for train and dev examples, but not for test examples.
-        """
-        self.guid = guid
-        self.text_a = text_a
-        self.text_b = text_b
-        self.label = label
-        self.update = update
+# class InputExample(object):
+#     """A single training/test example for simple sequence classification."""
+#
+#     def __init__(self, guid, text_a, text_b=None, label=None, update=None):
+#         """Constructs a InputExample.
+#
+#         Args:
+#             guid: Unique id for the example.
+#             text_a: string. The untokenized text of the first sequence. For single
+#             sequence tasks, only this sequence must be specified.
+#             text_b: (Optional) string. The untokenized text of the second sequence.
+#             Only must be specified for sequence pair tasks.
+#             label: (Optional) string. The label of the example. This should be
+#             specified for train and dev examples, but not for test examples.
+#         """
+#         self.guid = guid
+#         self.text_a = text_a
+#         self.text_b = text_b
+#         self.label = label
+#         self.update = update
 
 # -------------------------------------
 def chan_dst_examples(data_dir, dataset):
@@ -138,7 +138,7 @@ def chan_dst_examples(data_dir, dataset):
                 else:
                     update[ontology_label[f"{d}-{s}"]] = 0
             examples.append(
-                deepcopy(InputExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
+                deepcopy(CHANExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
     return examples
 
 def chan_dst_test():
@@ -174,36 +174,36 @@ def chan_dst_test():
                 else:
                     update[ontology_label[f"{d}-{s}"]] = 0
             examples.append(
-                deepcopy(InputExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
+                deepcopy(CHANExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
     return examples
 
-def load_dataset(dataset_path, dev_split=0.1):
-    data = json.load(open(dataset_path))
-    num_data = len(data)
-    num_dev = int(num_data * dev_split)
-    if not num_dev:
-        return data, []  # no dev dataset
-
-    dom_mapper = defaultdict(list)
-    for d in data:
-        # Domain의 개수와 guid를 mapping
-        dom_mapper[len(d["domains"])].append(d["dialogue_idx"])
-    # dev set의 길이의 1/3
-    num_per_domain_trainsition = int(num_dev / 3)
-    dev_idx = []
-    for v in dom_mapper.values():
-        # 각 domains의 특정 길이를 가진 dialogue에서 num~~만큼 random으로 뽑아냄.
-        idx = random.sample(v, num_per_domain_trainsition)
-        # dev_set을 위한 idx생성
-        dev_idx.extend(idx)
-    # 데이터셋 만들기!
-    train_data, dev_data = [], []
-    for d in data:
-        if d["dialogue_idx"] in dev_idx:
-            dev_data.append(d)
-        else:
-            train_data.append(d)
-    return train_data, dev_data
+# def load_dataset(dataset_path, dev_split=0.1):
+#     data = json.load(open(dataset_path))
+#     num_data = len(data)
+#     num_dev = int(num_data * dev_split)
+#     if not num_dev:
+#         return data, []  # no dev dataset
+#
+#     dom_mapper = defaultdict(list)
+#     for d in data:
+#         # Domain의 개수와 guid를 mapping
+#         dom_mapper[len(d["domains"])].append(d["dialogue_idx"])
+#     # dev set의 길이의 1/3
+#     num_per_domain_trainsition = int(num_dev / 3)
+#     dev_idx = []
+#     for v in dom_mapper.values():
+#         # 각 domains의 특정 길이를 가진 dialogue에서 num~~만큼 random으로 뽑아냄.
+#         idx = random.sample(v, num_per_domain_trainsition)
+#         # dev_set을 위한 idx생성
+#         dev_idx.extend(idx)
+#     # 데이터셋 만들기!
+#     train_data, dev_data = [], []
+#     for d in data:
+#         if d["dialogue_idx"] in dev_idx:
+#             dev_data.append(d)
+#         else:
+#             train_data.append(d)
+#     return train_data, dev_data
 
 def make_num_label(data_dir):
     ontology = json.load(open(f"{data_dir}/ontology.json"))
@@ -231,94 +231,6 @@ class InputFeatures(object):
         self.input_len = input_len
         self.label_id = label_id
         self.update = update
-
-
-class DataProcessor(object):
-    """Base class for data converters for sequence classification data sets."""
-    def get_train_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the train set."""
-        raise NotImplementedError()
-
-    def get_dev_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the dev set."""
-        raise NotImplementedError()
-
-    def get_labels(self):
-        """Gets the list of labels for this data set."""
-        raise NotImplementedError()
-
-    @classmethod
-    def _read_tsv(cls, input_file, quotechar=None):
-        """Reads a tab separated value file."""
-        with open(input_file, "r", encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                if len(line) > 0 and line[0][0] == '#':     # ignore comments (starting with '#')
-                    continue
-                lines.append(line)
-            return lines
-
-
-class Processor(DataProcessor):
-    """Processor for the belief tracking dataset (GLUE version)."""
-
-    def __init__(self, config, data_dir):
-        super(Processor, self).__init__()
-
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train", accumulation)
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev", accumulation)
-
-    def get_test_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test", accumulation)
-
-    def get_labels(self):
-        """See base class."""
-        return [ self.ontology[slot] for slot in self.target_slot]
-
-    def _create_examples(self, data_dir):
-        ontology = json.load(open(f"{data_dir}/ontology.json"))
-        slot_meta = json.load(open(f"{data_dir}/slot_meta.json"))
-        train_dials = json.load(open(f"{data_dir}/train_dials.json"))
-
-        ontology_label = {}
-        for idx, i in enumerate(ontology.keys()):
-            ontology_label[i] = idx
-
-        examples = []
-        for dials in train_dials:
-            dial_idx = dials["dialogue_idx"].split(":")[0]
-            guid = "%s-%s" % ("train", dial_idx)
-            turn = 0
-            label = ["none" for i in range(45)]
-            update = [0 for i in range(45)]
-            for idx, dial in enumerate(dials["dialogue"]):
-                if dial['role'] == 'user':
-                    continue
-                text_a = dials['dialogue'][idx - 1]['text']
-                text_b = dial['text']
-                guid_tmp = f"{guid}-{turn}"
-                turn += 1
-                for state in dials['dialogue'][idx - 1]['state']:
-                    d, s, v = state.split('-')
-                    if label[ontology_label[f"{d}-{s}"]] == 'none':
-                        label[ontology_label[f"{d}-{s}"]] = v
-                        update[ontology_label[f"{d}-{s}"]] = 1
-                    else:
-                        update[ontology_label[f"{d}-{s}"]] = 0
-                examples.append(
-                    deepcopy(InputExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
-        return examples
 
 class SUMBTDataset(Dataset):
     def __init__(self, examples, label_list, tokenizer, max_seq_length=64, max_turn_length=22):
@@ -597,7 +509,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     ## Required parameters
     parser.add_argument("--data_dir",
-                        default='/opt/ml/input/train_dataset',
+                        default='/opt/ml/input/data/train_dataset',
                         type=str,
                         help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
     parser.add_argument("--bert_model", default='bert-base-uncased', type=str,
@@ -821,7 +733,7 @@ if __name__ == "__main__":
     accumulation = False
 
     if args.do_train:
-        train_dataset, dev_dataset = load_dataset(f"{args.data_dir}/train_dials.json")
+        train_dataset, dev_dataset = load_chan_dataset(f"{args.data_dir}/train_dials.json")
         train_examples = chan_dst_examples(args.data_dir, train_dataset)
         dev_examples = chan_dst_examples(args.data_dir, dev_dataset)
 
