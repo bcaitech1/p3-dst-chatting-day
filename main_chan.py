@@ -15,7 +15,8 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler, Dataset
 from torch.utils.data.distributed import DistributedSampler
 
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+# from pytorch_pretrained_bert.tokenization import BertTokenizer
+from transformers import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
 
 from tensorboardX import SummaryWriter
@@ -121,8 +122,8 @@ def chan_dst_examples(data_dir, dataset):
     return examples
 
 def chan_dst_test():
-    ontology = json.load(open("/opt/ml/input/train_dataset/ontology.json"))
-    train_dials = json.load(open("/opt/ml/input/eval_dataset/eval_dials.json"))
+    ontology = json.load(open("/opt/ml/input/data/train_dataset/ontology.json"))
+    train_dials = json.load(open("/opt/ml/input/data/eval_dataset/eval_dials.json"))
 
     ontology_label = {}
     for idx, i in enumerate(ontology.keys()):
@@ -144,13 +145,6 @@ def chan_dst_test():
             text_b = dial['text']
             guid_tmp = f"{guid}-{turn}"
             turn += 1
-            for state in dials['dialogue'][idx - 1]['state']:
-                d, s, v = state.split('-')
-                if label[ontology_label[f"{d}-{s}"]] == 'none':
-                    label[ontology_label[f"{d}-{s}"]] = v
-                    update[ontology_label[f"{d}-{s}"]] = 1
-                else:
-                    update[ontology_label[f"{d}-{s}"]] = 0
             examples.append(
                 deepcopy(CHANExample(guid=guid_tmp, text_a=text_a, text_b=text_b, label=label, update=update)))
     return examples
@@ -432,7 +426,7 @@ if __name__ == "__main__":
                         default="cosine",
                         help="The metric for distance between label embeddings: cosine, euclidean.")
     parser.add_argument("--train_batch_size",
-                        default=4,
+                        default=16,
                         type=int,
                         help="Total dialog batch size for training.")
     parser.add_argument("--dev_batch_size",
@@ -440,7 +434,7 @@ if __name__ == "__main__":
                         type=int,
                         help="Total dialog batch size for validation.")
     parser.add_argument("--eval_batch_size",
-                        default=16,
+                        default=32,
                         type=int,
                         help="Total dialog batch size for evaluation.")
     parser.add_argument("--lamb",
@@ -546,15 +540,16 @@ if __name__ == "__main__":
     label_list = make_label_list(args.data_dir)
     num_labels = make_num_label(args.data_dir)# number of slot-values in each slot-type
 
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = BertTokenizer.from_pretrained("dsksd/bert-ko-small-minimal")
 
     num_train_steps = None
     accumulation = False
 
     if args.do_train:
-        train_dataset, dev_dataset = load_chan_dataset(f"{args.data_dir}/train_dials.json")
+        train_dataset, dev_dataset = load_chan_dataset(f"{args.data_dir}/train_dials.json", dev_split = 0)
         train_examples = chan_dst_examples(args.data_dir, train_dataset)
-        dev_examples = chan_dst_examples(args.data_dir, dev_dataset)
+        # dev_examples = chan_dst_examples(args.data_dir, dev_dataset)
+        eval_examples = chan_dst_test()
 
         ## Training utterances
         train_dataset = SUMBTDataset(train_examples, label_list, tokenizer, max_seq_length=args.max_seq_length, max_turn_length=args.max_turn_length)
@@ -578,14 +573,16 @@ if __name__ == "__main__":
         ## Dev utterances
         # all_input_ids_dev, all_input_len_dev, all_label_ids_dev, all_update_dev = convert_examples_to_features(
         #    dev_examples, label_list, args.max_seq_length, tokenizer, args.max_turn_length)
-        dev_dataset = SUMBTDataset(dev_examples, label_list, tokenizer, max_seq_length=args.max_seq_length, max_turn_length=args.max_turn_length)
+        # dev_dataset = SUMBTDataset(dev_examples, label_list, tokenizer, max_seq_length=args.max_seq_length, max_turn_length=args.max_turn_length)
 
         logger.info("***** Running validation *****")
-        logger.info("  Num examples = %d", len(dev_examples))
+        logger.info("  Num examples = %d", len(train_examples))
         logger.info("  Batch size = %d", args.dev_batch_size)
 
-        dev_sampler = SequentialSampler(dev_dataset)
-        dev_dataloader = DataLoader(dev_dataset, sampler=dev_sampler, batch_size=args.dev_batch_size, drop_last=False, collate_fn=lambda x: collate_fn(x))
+        # dev_sampler = SequentialSampler(dev_dataset)
+        # dev_dataloader = DataLoader(dev_dataset, sampler=dev_sampler, batch_size=args.dev_batch_size, drop_last=False, collate_fn=lambda x: collate_fn(x))
+
+        eval_dataset = SUMBTDataset(eval_examples, label_list, tokenizer, max_seq_length=args.max_seq_length, max_turn_length= args.max_turn_length)
 
     logger.info("Loaded data!")
 
@@ -699,7 +696,6 @@ if __name__ == "__main__":
             for step, batch in enumerate(tqdm(train_dataloader)):
                 batch = tuple(t.to(device) for t in batch)
                 input_ids, input_len, label_ids, update = batch
-                print(label_ids)
 
                 # Forward
                 if n_gpu == 1:
@@ -745,7 +741,7 @@ if __name__ == "__main__":
             dev_tup = [0, 0, 0]
             nb_dev_examples, nb_dev_steps = 0, 0
 
-            for step, batch in enumerate(dev_dataloader):
+            for step, batch in enumerate(train_dataloader):
                 batch = tuple(t.to(device) for t in batch)
                 input_ids, input_len, label_ids, update = batch
                 if input_ids.dim() == 2:
@@ -792,7 +788,7 @@ if __name__ == "__main__":
                 dev_acc_slot = dev_acc_slot / nb_dev_examples
 
             dev_loss = round(dev_loss, 6)
-            if last_update is None or dev_acc > best_acc:
+            if (last_update is None or dev_acc > best_acc):
                 # Save a trained model
                 output_model_file = os.path.join(args.output_dir, "acc.best")
                 if args.do_train:

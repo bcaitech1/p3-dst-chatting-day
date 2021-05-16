@@ -9,18 +9,22 @@ import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
 from torch.nn import CosineEmbeddingLoss
 
-from pytorch_pretrained_bert.modeling import BertModel
-from pytorch_pretrained_bert.modeling import BertPreTrainedModel
+# from pytorch_pretrained_bert.modeling import BertModel
+# from pytorch_pretrained_bert.modeling import BertPreTrainedModel
+from transformers import BertModel, BertConfig
 
-class BertForUtteranceEncoding(BertPreTrainedModel):
-    def __init__(self, config):
-        super(BertForUtteranceEncoding, self).__init__(config)
 
-        self.config = config
-        self.bert = BertModel(config)
+class BertForUtteranceEncoding(nn.Module):
+    def __init__(self, model_name):
+        super(BertForUtteranceEncoding, self).__init__()
+        self.config = BertConfig.from_pretrained(model_name)
+        self.bert = BertModel.from_pretrained(model_name, config=self.config)
 
-    def forward(self, input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False):
-        return self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers)
+    def forward(self, input_ids, token_type_ids, attention_mask):
+        # print(f'input_ids: {input_ids}\n')
+        # print(f'token_type_ids: {token_type_ids}\n')
+        # print(f'attention_mask: {attention_mask}\n')
+        return self.bert(input_ids, token_type_ids, attention_mask)
 
 
 class MultiHeadAttention(nn.Module):
@@ -77,15 +81,18 @@ class MultiHeadAttention(nn.Module):
     def get_scores(self):
         return self.scores
 
+
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
 
 class SublayerConnection(nn.Module):
     """
     A residual connection followed by a layer norm.
     Note for code simplicity the norm is first as opposed to last.
     """
+
     def __init__(self, size, dropout):
         super(SublayerConnection, self).__init__()
         self.norm = nn.LayerNorm(size)
@@ -94,6 +101,7 @@ class SublayerConnection(nn.Module):
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
         return x + self.dropout(sublayer(self.norm(x)))
+
 
 class Encoder(nn.Module):
     "Generic N layer decoder with masking."
@@ -111,6 +119,7 @@ class Encoder(nn.Module):
 
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
+
     def __init__(self, size, self_attn, feed_forward, dropout):
         super(EncoderLayer, self).__init__()
         self.self_attn = self_attn
@@ -123,14 +132,17 @@ class EncoderLayer(nn.Module):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
         return self.sublayer[1](x, self.feed_forward)
 
+
 def subsequent_mask(size):
     "Mask out subsequent positions."
     attn_shape = (1, size, size)
     subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
     return torch.from_numpy(subsequent_mask) == 0
 
+
 class PositionwiseFeedForward(nn.Module):
     "Implements FFN equation."
+
     def __init__(self, d_model, d_ff, dropout=0.1):
         super(PositionwiseFeedForward, self).__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
@@ -162,6 +174,7 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, :x.size(1)]
         return self.dropout(x)
 
+
 class BeliefTracker(nn.Module):
     def __init__(self, args, num_labels, device):
         super(BeliefTracker, self).__init__()
@@ -179,7 +192,7 @@ class BeliefTracker(nn.Module):
         self.args = args
 
         ### Utterance Encoder
-        self.utterance_encoder = BertForUtteranceEncoding.from_pretrained('bert-base-uncased')
+        self.utterance_encoder = BertForUtteranceEncoding('dsksd/bert-ko-small-minimal')
         self.bert_output_dim = self.utterance_encoder.config.hidden_size
         self.hidden_dropout_prob = self.utterance_encoder.config.hidden_dropout_prob
         if args.fix_utterance_encoder:
@@ -187,7 +200,7 @@ class BeliefTracker(nn.Module):
                 p.requires_grad = False
 
         ### slot, slot-value Encoder (not trainable)
-        self.sv_encoder = BertForUtteranceEncoding.from_pretrained('bert-base-uncased')
+        self.sv_encoder = BertForUtteranceEncoding('dsksd/bert-ko-small-minimal')
         for p in self.sv_encoder.bert.parameters():
             p.requires_grad = False
 
@@ -201,10 +214,12 @@ class BeliefTracker(nn.Module):
 
         ### Belief Tracker
         self.nbt = Encoder(EncoderLayer(self.bert_output_dim,
-                                           MultiHeadAttention(self.attn_head, self.bert_output_dim, dropout=self.hidden_dropout_prob),
-                                           PositionwiseFeedForward(self.bert_output_dim, self.hidden_dim, self.hidden_dropout_prob),
-                                           self.hidden_dropout_prob),
-                                      N=6)
+                                        MultiHeadAttention(self.attn_head, self.bert_output_dim,
+                                                           dropout=self.hidden_dropout_prob),
+                                        PositionwiseFeedForward(self.bert_output_dim, self.hidden_dim,
+                                                                self.hidden_dropout_prob),
+                                        self.hidden_dropout_prob),
+                           N=6)
 
         self.linear = nn.Linear(self.bert_output_dim, self.bert_output_dim)
         self.sent_layer_norm = nn.LayerNorm(self.bert_output_dim)
@@ -213,7 +228,7 @@ class BeliefTracker(nn.Module):
         self.query_word_layer_norm = nn.LayerNorm(self.bert_output_dim)
         self.gate = nn.Linear(self.bert_output_dim * 2, self.bert_output_dim)
         self.clsf_update = nn.Linear(self.bert_output_dim, self.bert_output_dim)
-        self.update_linear = nn.Linear(self.bert_output_dim*2, 1)
+        self.update_linear = nn.Linear(self.bert_output_dim * 2, 1)
 
         ### Measure
         self.distance_metric = args.distance_metric
@@ -234,22 +249,20 @@ class BeliefTracker(nn.Module):
 
         # Slot encoding
         slot_type_ids = torch.zeros(slot_ids.size(), dtype=torch.long).to(self.device)
-        slot_mask = slot_ids > 0
+        slot_mask = (slot_ids > 0).long()
         hid_slot, _ = self.sv_encoder(slot_ids.view(-1, self.max_label_length),
-                                   slot_type_ids.view(-1, self.max_label_length),
-                                   slot_mask.view(-1, self.max_label_length),
-                                           output_all_encoded_layers=False)
+                                      slot_type_ids.view(-1, self.max_label_length),
+                                      slot_mask.view(-1, self.max_label_length))
         hid_slot = hid_slot[:, 0, :]
         hid_slot = hid_slot.detach()
         self.slot_lookup = nn.Embedding.from_pretrained(hid_slot, freeze=True)
 
         for s, label_id in enumerate(label_ids):
             label_type_ids = torch.zeros(label_id.size(), dtype=torch.long).to(self.device)
-            label_mask = label_id > 0
+            label_mask = (label_id > 0).long()
             hid_label, _ = self.sv_encoder(label_id.view(-1, self.max_label_length),
                                            label_type_ids.view(-1, self.max_label_length),
-                                           label_mask.view(-1, self.max_label_length),
-                                           output_all_encoded_layers=False)
+                                           label_mask.view(-1, self.max_label_length))
             hid_label = hid_label[:, 0, :]
             hid_label = hid_label.detach()
             self.value_lookup[s] = nn.Embedding.from_pretrained(hid_label, freeze=True)
@@ -261,57 +274,58 @@ class BeliefTracker(nn.Module):
         token_type_ids = torch.zeros(ids.size(), dtype=torch.long).to(self.device)
         for i in range(len.size(0)):
             for j in range(len.size(1)):
-                if len[i,j,0] == 0: # padding
+                if len[i, j, 0] == 0:  # padding
                     break
-                elif len[i,j,1] > 0: # escape only text_a case
-                    start = len[i,j,0]
-                    ending = len[i,j,0] + len[i,j,1]
+                elif len[i, j, 1] > 0:  # escape only text_a case
+                    start = len[i, j, 0]
+                    ending = len[i, j, 0] + len[i, j, 1]
                     token_type_ids[i, j, start:ending] = 1
         attention_mask = ids > 0
         return token_type_ids, attention_mask
 
-    def forward(self, input_ids, input_len, labels, update=None, n_gpu=1, target_slot=None, mt=True):
+    def forward(self, input_ids, input_len, labels=None, update=None, n_gpu=1, target_slot=None, mt=True):
 
         # if target_slot is not specified, output values corresponding all slot-types
         if target_slot is None:
             target_slot = list(range(0, self.num_slots))
 
-        ds = input_ids.size(0) # dialog size
-        ts = input_ids.size(1) # turn size
-        bs = ds*ts
+        ds = input_ids.size(0)  # dialog size
+        ts = input_ids.size(1)  # turn size
+        bs = ds * ts
         seq_length = input_ids.size(2)
         slot_dim = len(target_slot)
 
         # Utterance encoding
         token_type_ids, attention_mask = self._make_aux_tensors(input_ids, input_len)
-
+        attention_mask = attention_mask.long()
         hidden, _ = self.utterance_encoder(input_ids.view(-1, seq_length),
                                            token_type_ids.view(-1, seq_length),
-                                           attention_mask.view(-1, seq_length),
-                                           output_all_encoded_layers=False)
+                                           attention_mask.view(-1, seq_length))
         hidden = torch.mul(hidden, attention_mask.view(-1, seq_length, 1).expand(hidden.size()).float())
-        hidden = hidden.repeat(slot_dim, 1, 1)          #[(slot_dim*ds*ts), bert_seq, hid_size]
+        hidden = hidden.repeat(slot_dim, 1, 1)  # [(slot_dim*ds*ts), bert_seq, hid_size]
 
         hid_slot = self.slot_lookup.weight[target_slot, :]  # Select target slot embedding
         hid_slot = hid_slot.repeat(1, bs).view(bs * slot_dim, -1)  # [(slot_dim*ds*ts), bert_seq, hid_size]
 
         # Attended utterance vector
-        hidden = self.attn(self.query_word_layer_norm(hid_slot), hidden, hidden, mask=attention_mask.view(-1, 1, seq_length).repeat(slot_dim, 1, 1))
-        hidden = hidden.squeeze() # [slot_dim*ds*ts, bert_dim]
-        hidden_curr = hidden.view(slot_dim, ds, ts, -1).view(-1,ts,self.bert_output_dim)
+        hidden = self.attn(self.query_word_layer_norm(hid_slot), hidden, hidden,
+                           mask=attention_mask.view(-1, 1, seq_length).repeat(slot_dim, 1, 1))
+        hidden = hidden.squeeze()  # [slot_dim*ds*ts, bert_dim]
+        hidden_curr = hidden.view(slot_dim, ds, ts, -1).view(-1, ts, self.bert_output_dim)
         hidden = self.word_layer_norm(hidden_curr)
         hidden = self.add_pe(hidden)
 
         # NBT
         turn_mask = torch.Tensor(ds, ts, ts).byte().to(self.device)
         for d in range(ds):
-            padding_utter = (input_len[d,:].sum(-1) != 0)
-            turn_mask[d] = padding_utter.unsqueeze(0).repeat(ts,1) & subsequent_mask(ts).to(self.device)
+            padding_utter = (input_len[d, :].sum(-1) != 0)
+            turn_mask[d] = padding_utter.unsqueeze(0).repeat(ts, 1) & subsequent_mask(ts).to(self.device)
 
-        turn_mask = turn_mask.repeat(slot_dim,1,1)
+        turn_mask = turn_mask.repeat(slot_dim, 1, 1)
         hidden = self.nbt(hidden, turn_mask)
 
-        hidden = self.attn2(self.query_sent_layer_norm(hid_slot).view(-1, ts, self.bert_output_dim), hidden, hidden, mask=turn_mask)
+        hidden = self.attn2(self.query_sent_layer_norm(hid_slot).view(-1, ts, self.bert_output_dim), hidden, hidden,
+                            mask=turn_mask)
         sigmoid = torch.sigmoid(self.gate(torch.cat([hidden_curr, hidden], -1)))
         hidden = sigmoid * hidden_curr + (1 - sigmoid) * hidden
 
@@ -321,17 +335,19 @@ class BeliefTracker(nn.Module):
             # tanh activation
             hidden_update = torch.tanh(self.clsf_update(F.dropout(hidden, p=self.args.mt_drop, training=self.training)))
             # relu activation
-            #hidden_update = F.relu(self.clsf_update(F.dropout(hidden, p=self.args.mt_drop, training=self.training)))
+            # hidden_update = F.relu(self.clsf_update(F.dropout(hidden, p=self.args.mt_drop, training=self.training)))
             # swish activation
-            #func = lambda x: x / (1 + torch.exp(-x))
-            #hidden_update = func(self.clsf_update(F.dropout(hidden, p=self.args.mt_drop, training=self.training)))
-            prob_update = torch.sigmoid(self.update_linear(torch.cat([hidden_update, torch.cat([torch.zeros_like(hidden_update[:, :1]).cuda(), hidden_update[:, :-1]], 1)], -1))).squeeze()
-            #prob_update = torch.sigmoid(torch.sum(hidden_update * torch.cat([torch.zeros_like(hidden_update[:, :1]).cuda(), hidden_update[:, :-1]], 1), -1))
-            #prob_update = torch.sigmoid(self.clsf_update(F.dropout(hidden, self.hidden_dropout_prob, self.training))).squeeze()
+            # func = lambda x: x / (1 + torch.exp(-x))
+            # hidden_update = func(self.clsf_update(F.dropout(hidden, p=self.args.mt_drop, training=self.training)))
+            prob_update = torch.sigmoid(self.update_linear(torch.cat(
+                [hidden_update, torch.cat([torch.zeros_like(hidden_update[:, :1]).cuda(), hidden_update[:, :-1]], 1)],
+                -1))).squeeze()
+            # prob_update = torch.sigmoid(torch.sum(hidden_update * torch.cat([torch.zeros_like(hidden_update[:, :1]).cuda(), hidden_update[:, :-1]], 1), -1))
+            # prob_update = torch.sigmoid(self.clsf_update(F.dropout(hidden, self.hidden_dropout_prob, self.training))).squeeze()
             prob_update = prob_update.view(slot_dim, ds, ts).permute(1, 2, 0).contiguous()
             mask = (update > -1).float()
-            update_1 = update.masked_fill((1 - mask).byte(), 1)
-            prob_update_1 = prob_update.masked_fill((1 - mask).byte(), 1)
+            update_1 = update.masked_fill((1 - mask).bool(), 1)
+            prob_update_1 = prob_update.masked_fill((1 - mask).bool(), 1)
             loss_update = F.binary_cross_entropy(prob_update_1, update_1, reduction="none")
             loss_update = loss_update.sum() / mask.sum()
             tp = torch.sum((prob_update >= 0.5) & (update == 1))
@@ -343,17 +359,18 @@ class BeliefTracker(nn.Module):
 
         # Label (slot-value) encoding
         main_loss = torch.Tensor([0.0]).to(self.device)
-        loss_slot =[]
+        loss_slot = []
         pred_slot = []
         output = []
 
-        for s, slot_id in enumerate(target_slot): ## note: target_slot is successive
+        for s, slot_id in enumerate(target_slot):  ## note: target_slot is successive
             # loss calculation
             hid_label = self.value_lookup[slot_id].weight
             num_slot_labels = hid_label.size(0)
 
-            _hid_label = hid_label.unsqueeze(0).unsqueeze(0).repeat(ds, ts, 1, 1).view(ds*ts*num_slot_labels, -1)
-            _hidden = hidden[s,:,:,:].unsqueeze(2).repeat(1, 1, num_slot_labels, 1).view(ds*ts*num_slot_labels, -1)
+            _hid_label = hid_label.unsqueeze(0).unsqueeze(0).repeat(ds, ts, 1, 1).view(ds * ts * num_slot_labels, -1)
+            _hidden = hidden[s, :, :, :].unsqueeze(2).repeat(1, 1, num_slot_labels, 1).view(ds * ts * num_slot_labels,
+                                                                                            -1)
             _dist = self.metric(_hid_label, _hidden).view(ds, ts, num_slot_labels)
 
             if self.distance_metric == "euclidean":
@@ -363,7 +380,7 @@ class BeliefTracker(nn.Module):
             output.append(_dist)
 
             if labels is not None:
-                _loss = self.nll(_dist.view(ds*ts, -1), labels[:,:,s].view(-1))
+                _loss = self.nll(_dist.view(ds * ts, -1), labels[:, :, s].view(-1))
                 loss_slot.append(_loss.item())
                 main_loss += _loss
 
@@ -378,16 +395,16 @@ class BeliefTracker(nn.Module):
         # calculate joint accuracy
         pred_slot = torch.cat(pred_slot, 2)
         accuracy = (pred_slot == labels).view(-1, slot_dim)
-        acc_slot = torch.sum(accuracy,0).float() \
+        acc_slot = torch.sum(accuracy, 0).float() \
                    / torch.sum(labels.view(-1, slot_dim) > -1, 0).float()
         acc = sum(torch.sum(accuracy, 1) / slot_dim).float() \
-              / torch.sum(labels[:,:,0].view(-1) > -1, 0).float() # joint accuracy
+              / torch.sum(labels[:, :, 0].view(-1) > -1, 0).float()  # joint accuracy
 
         if n_gpu == 1:
             return loss, loss_slot, acc, acc_slot, pred_slot, (main_loss, loss_update, acc_update)
         else:
-            return loss.unsqueeze(0), loss.unsqueeze(0), acc.unsqueeze(0), acc_slot.unsqueeze(0), pred_slot, main_loss.unsqueeze(0), loss_update.unsqueeze(0), acc_update.unsqueeze(0)
-
+            return loss.unsqueeze(0), loss.unsqueeze(0), acc.unsqueeze(0), acc_slot.unsqueeze(
+                0), pred_slot, main_loss.unsqueeze(0), loss_update.unsqueeze(0), acc_update.unsqueeze(0)
 
     @staticmethod
     def init_parameter(module):
@@ -396,6 +413,6 @@ class BeliefTracker(nn.Module):
             torch.nn.init.constant_(module.bias, 0.0)
         elif isinstance(module, nn.GRU) or isinstance(module, nn.LSTM):
             torch.nn.init.xavier_normal_(module.weight_ih_l0)
-            torch.nn.init.xavier_normal_(module.weight_hh_l0)   # torch.nn.init.orthogonal_() ???
+            torch.nn.init.xavier_normal_(module.weight_hh_l0)  # torch.nn.init.orthogonal_() ???
             torch.nn.init.constant_(module.bias_ih_l0, 0.0)
             torch.nn.init.constant_(module.bias_hh_l0, 0.0)
