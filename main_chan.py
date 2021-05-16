@@ -731,92 +731,92 @@ if __name__ == "__main__":
                     optimizer.step()
                     optimizer.zero_grad()
                     global_step += 1
-
+            if epoch % 10 == 0:
             # Perform evaluation on validation dataset
-            badcase_list = []
-            model.eval()
-            dev_loss = 0
-            dev_acc = 0
-            dev_loss_slot, dev_acc_slot = None, None
-            dev_tup = [0, 0, 0]
-            nb_dev_examples, nb_dev_steps = 0, 0
+                badcase_list = []
+                model.eval()
+                dev_loss = 0
+                dev_acc = 0
+                dev_loss_slot, dev_acc_slot = None, None
+                dev_tup = [0, 0, 0]
+                nb_dev_examples, nb_dev_steps = 0, 0
 
-            for step, batch in enumerate(train_dataloader):
-                batch = tuple(t.to(device) for t in batch)
-                input_ids, input_len, label_ids, update = batch
-                if input_ids.dim() == 2:
-                    input_ids = input_ids.unsqueeze(0)
-                    input_len = input_len.unsqueeze(0)
-                    label_ids = label_ids.unsuqeeze(0)
-                    update = update.unsqueeze(0)
+                for step, batch in enumerate(tqdm(train_dataloader)):
+                    batch = tuple(t.to(device) for t in batch)
+                    input_ids, input_len, label_ids, update = batch
+                    if input_ids.dim() == 2:
+                        input_ids = input_ids.unsqueeze(0)
+                        input_len = input_len.unsqueeze(0)
+                        label_ids = label_ids.unsuqeeze(0)
+                        update = update.unsqueeze(0)
 
-                with torch.no_grad():
-                    loss, loss_slot, acc, acc_slot, pred_slot, tup = model(input_ids, input_len, label_ids, update, n_gpu)
+                    with torch.no_grad():
+                        loss, loss_slot, acc, acc_slot, pred_slot, tup = model(input_ids, input_len, label_ids, update, n_gpu)
 
-                badcase = (pred_slot != label_ids) * (label_ids > -1)
-                badcase_1 = badcase.sum(-1).nonzero()
-                for b in badcase_1:
-                    b_idx = b.cpu().numpy().tolist()
-                    sent = ' '.join(tokenizer.convert_ids_to_tokens(input_ids[b_idx[0], b_idx[1]].cpu().numpy().tolist()))
-                    pred = ' '.join([label_list[i][j] for i, j in enumerate(pred_slot[b_idx[0], b_idx[1]].cpu().numpy().tolist())])
-                    gold = ' '.join([label_list[i][j] for i, j in enumerate(label_ids[b_idx[0], b_idx[1]].cpu().numpy().tolist())])
-                    badcase_list.append(f"{sent}\t{pred}\t{gold}\n")
-                num_valid_turn = torch.sum(label_ids[:,:,0].view(-1) > -1, 0).item()
-                dev_loss += loss.item() * num_valid_turn
-                dev_acc += acc.item() * num_valid_turn
-                dev_tup[0] += tup[0] * num_valid_turn
-                dev_tup[1] += tup[1] * num_valid_turn
-                dev_tup[2] += tup[2] * num_valid_turn
+                    badcase = (pred_slot != label_ids) * (label_ids > -1)
+                    badcase_1 = badcase.sum(-1).nonzero()
+                    for b in badcase_1:
+                        b_idx = b.cpu().numpy().tolist()
+                        sent = ' '.join(tokenizer.convert_ids_to_tokens(input_ids[b_idx[0], b_idx[1]].cpu().numpy().tolist()))
+                        pred = ' '.join([label_list[i][j] for i, j in enumerate(pred_slot[b_idx[0], b_idx[1]].cpu().numpy().tolist())])
+                        gold = ' '.join([label_list[i][j] for i, j in enumerate(label_ids[b_idx[0], b_idx[1]].cpu().numpy().tolist())])
+                        badcase_list.append(f"{sent}\t{pred}\t{gold}\n")
+                    num_valid_turn = torch.sum(label_ids[:,:,0].view(-1) > -1, 0).item()
+                    dev_loss += loss.item() * num_valid_turn
+                    dev_acc += acc.item() * num_valid_turn
+                    dev_tup[0] += tup[0] * num_valid_turn
+                    dev_tup[1] += tup[1] * num_valid_turn
+                    dev_tup[2] += tup[2] * num_valid_turn
+
+                    if n_gpu == 1:
+                        if dev_loss_slot is None:
+                            dev_loss_slot = [ l * num_valid_turn for l in loss_slot]
+                            dev_acc_slot = acc_slot * num_valid_turn
+                        else:
+                            for i, l in enumerate(loss_slot):
+                                dev_loss_slot[i] = dev_loss_slot[i] + l * num_valid_turn
+                            dev_acc_slot += acc_slot * num_valid_turn
+
+                    nb_dev_examples += num_valid_turn
+
+                dev_loss = dev_loss / nb_dev_examples
+                dev_acc = dev_acc / nb_dev_examples
+                dev_tup = list(map(lambda x: x / nb_dev_examples, dev_tup))
+                #train_mt = dev_tup[2] < 0.95
 
                 if n_gpu == 1:
-                    if dev_loss_slot is None:
-                        dev_loss_slot = [ l * num_valid_turn for l in loss_slot]
-                        dev_acc_slot = acc_slot * num_valid_turn
-                    else:
-                        for i, l in enumerate(loss_slot):
-                            dev_loss_slot[i] = dev_loss_slot[i] + l * num_valid_turn
-                        dev_acc_slot += acc_slot * num_valid_turn
+                    dev_acc_slot = dev_acc_slot / nb_dev_examples
 
-                nb_dev_examples += num_valid_turn
+                dev_loss = round(dev_loss, 6)
+                if (last_update is None or dev_acc > best_acc):
+                    # Save a trained model
+                    output_model_file = os.path.join(args.output_dir, "acc.best")
+                    if args.do_train:
+                        if n_gpu == 1:
+                            torch.save(model.state_dict(), output_model_file)
+                        else:
+                            torch.save(model.module.state_dict(), output_model_file)
+                    best_acc = dev_acc
+                if last_update is None or dev_tup[0] < best_loss:
+                    badcase_fp = open(os.path.join(args.output_dir, "dev_badcase.txt"), "w", encoding="utf-8")
+                    for line in badcase_list:
+                        badcase_fp.write(line)
+                    badcase_fp.close()
+                    # Save a trained model
+                    output_model_file = os.path.join(args.output_dir, "loss.best")
+                    if args.do_train:
+                        if n_gpu == 1:
+                            torch.save(model.state_dict(), output_model_file)
+                        else:
+                            torch.save(model.module.state_dict(), output_model_file)
 
-            dev_loss = dev_loss / nb_dev_examples
-            dev_acc = dev_acc / nb_dev_examples
-            dev_tup = list(map(lambda x: x / nb_dev_examples, dev_tup))
-            #train_mt = dev_tup[2] < 0.95
+                    last_update = epoch
+                    best_loss = dev_tup[0]
 
-            if n_gpu == 1:
-                dev_acc_slot = dev_acc_slot / nb_dev_examples
+                logger.info("*** Epoch=%d, Dev Loss=%.6f, Dev Acc=%.6f, Best Loss=%.6f, Best Acc=%.6f ***" % (epoch, dev_tup[0], dev_acc, best_loss, best_acc))
 
-            dev_loss = round(dev_loss, 6)
-            if (last_update is None or dev_acc > best_acc):
-                # Save a trained model
-                output_model_file = os.path.join(args.output_dir, "acc.best")
-                if args.do_train:
-                    if n_gpu == 1:
-                        torch.save(model.state_dict(), output_model_file)
-                    else:
-                        torch.save(model.module.state_dict(), output_model_file)
-                best_acc = dev_acc
-            if last_update is None or dev_tup[0] < best_loss:
-                badcase_fp = open(os.path.join(args.output_dir, "dev_badcase.txt"), "w", encoding="utf-8")
-                for line in badcase_list:
-                    badcase_fp.write(line)
-                badcase_fp.close()
-                # Save a trained model
-                output_model_file = os.path.join(args.output_dir, "loss.best")
-                if args.do_train:
-                    if n_gpu == 1:
-                        torch.save(model.state_dict(), output_model_file)
-                    else:
-                        torch.save(model.module.state_dict(), output_model_file)
-
-                last_update = epoch
-                best_loss = dev_tup[0]
-
-            logger.info("*** Epoch=%d, Dev Loss=%.6f, Dev Acc=%.6f, Best Loss=%.6f, Best Acc=%.6f ***" % (epoch, dev_tup[0], dev_acc, best_loss, best_acc))
-
-            if last_update + args.patience <= epoch:
-                break
+                if last_update + args.patience <= epoch:
+                    break
 
 
     ###############################################################################
