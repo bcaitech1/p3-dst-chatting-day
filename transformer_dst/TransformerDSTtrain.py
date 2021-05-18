@@ -7,7 +7,7 @@ from utils.data_utils import prepare_dataset, MultiWozDataset, load_dataset
 from utils.data_utils import make_slot_meta, domain2id, OP_SET, make_turn_label, postprocessing
 from utils.eval_utils import compute_prf, compute_acc, per_domain_join_accuracy
 from utils.ckpt_utils import download_ckpt, convert_ckpt_compatible
-from evaluation import model_evaluation
+from TransformerDSTevaluation import model_evaluation
 from tqdm.auto import tqdm
 
 import torch
@@ -19,6 +19,7 @@ import random
 import os
 import json
 import time
+import wandb
 
 def masked_cross_entropy_for_value(logits, target, pad_idx=0):
     mask = target.ne(pad_idx)
@@ -67,6 +68,12 @@ def main(args):
     def worker_init_fn(worker_id):
         np.random.seed(args.random_seed + worker_id)
 
+    if args.use_wandb:
+        # init wandb
+        wandb.init()
+        # wandb config update
+        wandb.config.update(args)
+
     n_gpu = 0
     n_gpu = torch.cuda.device_count()
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -98,7 +105,8 @@ def main(args):
     op2id = OP_SET[args.op_code]
     print(op2id)
 
-    tokenizer = BertTokenizer.from_pretrained("dsksd/bert-ko-small-minimal")
+
+    tokenizer = BertTokenizer.from_pretrained(args.bert_config)
 
     special_tokens = ['[SLOT]', '[NULL]']
     special_tokens_dict = {'additional_special_tokens': special_tokens}
@@ -182,10 +190,10 @@ def main(args):
                            type_vocab_size, args.exclude_domain)
 
     if not os.path.exists(args.bert_ckpt_path):
-        args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config_path, 'assets')
+        args.bert_ckpt_path = download_ckpt(args.bert_ckpt_path, args.bert_config, args.bert_config_path, 'assets')
 
     state_dict = torch.load(args.bert_ckpt_path, map_location='cpu')
-    _k = 'embeddings.token_type_embeddings.weight'
+    _k = 'bert.embeddings.token_type_embeddings.weight'
     print("config.type_vocab_size != state_dict[bert.embeddings.token_type_embeddings.weight] ({0} != {1})".format(
         type_vocab_size, state_dict[_k].shape[0]))
     # state_dict[_k].repeat(
@@ -193,7 +201,7 @@ def main(args):
     state_dict[_k] = state_dict[_k].repeat(int(type_vocab_size / state_dict[_k].shape[0]), 1)
     state_dict[_k].data[2, :].copy_(state_dict[_k].data[0, :])
     state_dict[_k].data[3, :].copy_(state_dict[_k].data[0, :])
-    model.bert.load_state_dict(state_dict)
+    model.bert.load_state_dict(state_dict, strict=False)
     print("\n### Done Load BERT")
     sys.stdout.flush()
 
@@ -207,6 +215,10 @@ def main(args):
     model.bert.embeddings.token_type_embeddings.weight.data[3].normal_(mean=0.0, std=0.02)
     model.bert.resize_token_embeddings(len(tokenizer))
     model.to(device)
+
+    if args.use_wandb:
+        # wandb watch model
+        wandb.watch(model)
 
     num_train_steps = int(len(train_data_raw) / args.batch_size * args.n_epochs)
 
@@ -261,9 +273,7 @@ def main(args):
 
     start_time = time.time()
 
-    start_time = time.time()
-
-    for epoch in range(args.n_epochs):
+    for epoch in tqdm(range(args.n_epochs)):
         batch_loss = []
         model.train()
         for step, batch in enumerate(train_dataloader):
@@ -276,8 +286,6 @@ def main(args):
                 input_ids_p, segment_ids_p, input_mask_p, \
                 state_position_ids, op_ids, domain_ids, input_ids_g, segment_ids_g, position_ids_g, input_mask_g, \
                 masked_pos, masked_weights, lm_label_ids, id_n_map, gen_max_len, n_total_pred = batch
-
-                print("epoch : ", epoch, "step : ", step)
 
                 domain_scores, state_scores, loss_g = model(input_ids_p, segment_ids_p, input_mask_p, state_position_ids,
                                                             input_ids_g, segment_ids_g, position_ids_g, input_mask_g,
@@ -333,28 +341,35 @@ def main(args):
                                  len(train_dataloader), np.mean(batch_loss),
                                  loss_s.item(), loss_g))
 
+                    if args.use_wandb:
+                        wandb.log({
+                            "mean loss": np.mean(batch_loss),
+                            "state loss": loss_s.item(),
+                            "gen loss": loss_g,
+                            "domain loss" : loss_d.item()
+                        })
+
                     sys.stdout.flush()
                     batch_loss = []
-            except:
-                print("epoch : ", epoch, "step : ", step, " error")
 
+            except Exception as ex:
+                print(ex)
 
-        if args.use_one_optim:
-            save(args, epoch + 1, model, optimizer)
-        else:
-            save(args, epoch + 1, model, enc_optimizer, dec_optimizer)
-
-        # if ((epoch + 1) % args.eval_epoch == 0) and (epoch + 1 >= 8):
-        if (epoch + 1) % args.eval_epoch == 0:
+        if ((epoch + 1) % args.eval_epoch == 0) and (epoch + 1 >= 8):
             eval_res = model_evaluation(model, dev_data_raw, tokenizer, slot_meta, epoch + 1, args.op_code,
                                         use_full_slot=args.use_full_slot, use_dt_only=args.use_dt_only,
-                                        no_dial=args.no_dial, use_cls_only=args.use_cls_only, n_gpu=n_gpu)
+                                        no_dial=args.no_dial, use_cls_only=args.use_cls_only, n_gpu=n_gpu, use_wandb=args.use_wandb)
             print("### Epoch {:} Score : ".format(epoch + 1), eval_res)
 
             if eval_res['joint_acc'] > best_score['joint_acc']:
                 best_score = eval_res
                 print("### Best Joint Acc: {:} ###".format(best_score['joint_acc']))
                 print('\n')
+
+                if args.use_one_optim:
+                    save(args, epoch + 1, model, optimizer)
+                else:
+                    save(args, epoch + 1, model, enc_optimizer, dec_optimizer)
 
                 # if epoch + 1 >= 8:  # To speed up
                 #     eval_res_test = model_evaluation(model, test_data_raw, tokenizer, slot_meta, epoch + 1,
@@ -394,8 +409,9 @@ if __name__ == "__main__":
     parser.add_argument("--test_data", default='test_dials.json', type=str)
     parser.add_argument("--ontology_data", default='/opt/ml/input/data/train_dataset/ontology.json', type=str)
     parser.add_argument("--vocab_path", default='assets/vocab.txt', type=str)
-    parser.add_argument("--bert_config_path", default='/opt/ml/code/transformer_dst/utils/bert_config_base_uncased.json', type=str)
-    parser.add_argument("--bert_ckpt_path", default='./assets/bert-base-uncased-pytorch_model.bin', type=str)
+    parser.add_argument("--bert_config_path", default="./utils/bert_ko_small_minimal.json", type=str)
+    parser.add_argument("--bert_config", default='dsksd/bert-ko-small-minimal', type=str)
+    parser.add_argument("--bert_ckpt_path", default='./assets/dsksd/bert-ko-small-minimal-pytorch_model.bin', type=str)
     parser.add_argument("--save_dir", default='outputs', type=str)
 
     parser.add_argument("--random_seed", default=42, type=int)
@@ -405,7 +421,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec_warmup", default=0.1, type=float)
     parser.add_argument("--enc_lr", default=3e-5, type=float)  # my Transformer-AR uses 3e-5
     parser.add_argument("--dec_lr", default=1e-4, type=float)
-    parser.add_argument("--n_epochs", default=30, type=int)
+    parser.add_argument("--n_epochs", default=40, type=int)
     parser.add_argument("--eval_epoch", default=1, type=int)
 
     parser.add_argument("--op_code", default="4", type=str)
@@ -433,6 +449,7 @@ if __name__ == "__main__":
     parser.add_argument('--forbid_ignore_word', type=str, default=None,
                         help="Ignore the word during forbid_duplicate_ngrams")
     parser.add_argument('--ngram_size', type=int, default=2)
+    parser.add_argument("--use_wandb", type=bool, default=True)
 
     args = parser.parse_args()
     args.train_data_path = os.path.join(args.data_root, args.train_data)

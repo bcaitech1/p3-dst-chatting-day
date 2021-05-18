@@ -162,7 +162,7 @@ class TransformerDST(CustomBertPreTrainedModel):
                diag_1_len=0, no_dial=False, use_cls_only=False, i_dslen_map=None):
         """
         Evaluation
-        Tensor (batch, max_len), here batch should be 1 * n_updates to match evaluation.py
+        Tensor (batch, max_len), here batch should be 1 * n_updates to match TransformerDSTevaluation.py
         however, self.encoder and self.decoder.generate themselves support batch iteration.
         """
 
@@ -357,7 +357,7 @@ class BertForSeq2SeqDecoder(nn.Module):
         sequence_output_masked = gather_seq_out_by_pos(
             sequence_output, masked_pos)
 
-        prediction_scores = self.predictions(sequence_output_masked)
+        prediction_scores = self.predictions(sequence_output_masked)        # transform -> linear 수행
         masked_lm_loss = self.crit_mask_lm(
             prediction_scores.transpose(1, 2).float(), masked_lm_labels)
 

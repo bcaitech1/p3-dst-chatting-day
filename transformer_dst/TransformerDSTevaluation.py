@@ -16,6 +16,7 @@ import sys
 import time
 import argparse
 import json
+import wandb
 from copy import deepcopy
 
 
@@ -25,10 +26,16 @@ def main(args):
 
     ontology = json.load(open(os.path.join(args.data_root, args.ontology_data)))
     slot_meta, _ = make_slot_meta(ontology)
-    tokenizer = BertTokenizer(args.vocab_path, do_lower_case=True)
-    data = prepare_dataset(os.path.join(args.data_root, args.test_data),
-                           tokenizer,
-                           slot_meta, args.n_history, args.max_seq_length, args.op_code)
+
+    tokenizer = BertTokenizer.from_pretrained(args.bert_config)
+    special_tokens = ['[SLOT]', '[NULL]']
+    special_tokens_dict = {'additional_special_tokens': special_tokens}
+    tokenizer.add_special_tokens(special_tokens_dict)
+
+    data = prepare_dataset(data_path=os.path.join(args.data_root, args.test_data),
+                           data_list=None,
+                           tokenizer=tokenizer,
+                           slot_meta=slot_meta, n_history=args.n_history, max_seq_length=args.max_seq_length, op_code=args.op_code)
 
     model_config = BertConfig.from_json_file(args.bert_config_path)
     model_config.dropout = 0.1
@@ -63,7 +70,8 @@ def main(args):
 
 
 def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
-                     is_gt_op=False, is_gt_p_state=False, is_gt_gen=False, use_full_slot=False, use_dt_only=False, no_dial=False, use_cls_only=False, n_gpu=0):
+                     is_gt_op=False, is_gt_p_state=False, is_gt_gen=False, use_full_slot=False, use_dt_only=False,
+                     no_dial=False, use_cls_only=False, n_gpu=0, submission=False, use_wandb=False):
 
     device = torch.device('cuda' if n_gpu else 'cpu')
 
@@ -84,6 +92,8 @@ def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
     results = {}
     last_dialog_state = {}
     wall_times = []
+    if submission:
+        _submission={}
 
     start_time = time.time()
     for di, i in enumerate(test_data):
@@ -169,6 +179,9 @@ def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
             joint_acc += 1
         key = str(i.id) + '_' + str(i.turn_id)
         results[key] = [pred_state, i.gold_state]
+        if submission:
+            key_sub = str(i.id) + '-' + str(i.turn_id)
+            _submission[key_sub] = pred_state
 
         # Compute prediction slot accuracy
         temp_acc = compute_acc(set(i.gold_state), set(pred_state), slot_meta)
@@ -232,26 +245,44 @@ def model_evaluation(model, test_data, tokenizer, slot_meta, epoch, op_code='4',
     print("Final slot turn F1 : ", final_slot_F1_score)
     print("Latency Per Prediction : %f ms" % latency)
     print("-----------------------------\n")
-    json.dump(results, open('preds_%d.json' % epoch, 'w'))
 
-    per_domain_join_accuracy(results, slot_meta)
+    if submission:
+        json.dump(
+            _submission,
+            open(f"{epoch}-output.csv", "w"),
+            indent=2,
+            ensure_ascii=False,
+        )
+        scores = {}
+    else:
+        json.dump(results, open('preds_%d.json' % epoch, 'w'))
 
-    scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
-              'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
-              'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
+        if use_wandb:
+            wandb.log({
+                "joint_goal_accuracy": joint_acc_score,
+                "turn_slot_accuracy": turn_acc_score,
+                "turn_slot_f1": slot_F1_score
+            })
+
+        per_domain_join_accuracy(results, slot_meta)
+
+        scores = {'epoch': epoch, 'joint_acc': joint_acc_score,
+                  'slot_acc': turn_acc_score, 'slot_f1': slot_F1_score,
+                  'op_acc': op_acc_score, 'op_f1': op_F1_score, 'final_slot_f1': final_slot_F1_score}
     return scores
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_root", default='data/mwz2.1', type=str)
-    parser.add_argument("--test_data", default='test_dials.json', type=str)
+    parser.add_argument("--data_root", default='/opt/ml/input/data/train_dataset', type=str)
+    parser.add_argument("--test_data", default='train_dials.json', type=str)
     parser.add_argument("--ontology_data", default='ontology.json', type=str)
     parser.add_argument("--vocab_path", default='assets/vocab.txt', type=str)
-    parser.add_argument("--bert_config_path", default='assets/bert_config_base_uncased.json', type=str)
-    parser.add_argument("--model_ckpt_path", default='outputs/model_best.bin', type=str)
+    parser.add_argument("--bert_config_path", default="./utils/bert_ko_small_minimal.json", type=str)
+    parser.add_argument("--bert_config", default='dsksd/bert-ko-small-minimal', type=str)
+    parser.add_argument("--model_ckpt_path", default='outputs/model.e4.bin', type=str)
     parser.add_argument("--n_history", default=1, type=int)
-    parser.add_argument("--max_seq_length", default=256, type=int)
+    parser.add_argument("--max_seq_length", default=512, type=int)
     parser.add_argument("--op_code", default="4", type=str)
 
     parser.add_argument("--gt_op", default=False, action='store_true')

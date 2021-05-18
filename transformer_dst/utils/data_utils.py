@@ -213,8 +213,8 @@ def prepare_dataset(data_path, data_list, tokenizer, slot_meta,
         while ti < len(dial_dict["dialogue"]):
             turn = dial_dict["dialogue"][ti]
             if ti == 0 and turn["role"] == "user":
-                turn2 = turn
-                turn_uttr = ("" + ' ; ' + turn2["text"]).strip()
+                ti += 1
+                continue
             elif (ti + 1) == len(dial_dict["dialogue"]):
                 turn2 = {"state": []}
                 turn_uttr = (turn["text"] + ' ; ' + "").strip()
@@ -237,8 +237,93 @@ def prepare_dataset(data_path, data_list, tokenizer, slot_meta,
                 turn_dialog_state = {d_s_v[0] + "-" + d_s_v[1]: d_s_v[2] for d_s_v in turn_dialog_state}
                 turn_domain = prev_turn_state[-1].split("-")[0]
             else:
-                ti+=1
+                turn_dialog_state = {}
+                turn_domain = EXPERIMENT_DOMAINS[0]
+
+            last_uttr = turn_uttr
+            op_labels, generate_y, gold_state = make_turn_label(slot_meta, last_dialog_state,
+                                                                turn_dialog_state,
+                                                                tokenizer, op_code)
+
+            if (ti + 1) == len(dial_dict["dialogue"]):
+                is_last_turn = True
+            else:
+                is_last_turn = False
+
+            turn_uttr = tokenizer.tokenize(turn_uttr)
+            dial_his = tokenizer.tokenize(' '.join(dialog_history[-n_history:]))
+
+            slot_id = tokenizer.convert_tokens_to_ids(['[SLOT]'])[0]
+            mask_id = tokenizer.convert_tokens_to_ids(['[MASK]'])[0]
+
+            instance = TrainingInstance(dial_dict["dialogue_idx"], turn_domain,
+                                        turn_id, turn_uttr, dial_his,
+                                        last_dialog_state, op_labels,
+                                        generate_y, gold_state, max_seq_length, slot_meta,
+                                        is_last_turn, op_code=op_code, slot_id=slot_id, mask_id=mask_id)
+
+            instance.make_instance(tokenizer)
+            data.append(instance)
+
+            c += 1
+
+            turn_id += 1
+            ti += 1
+
+            last_dialog_state = turn_dialog_state
+
+    return data
+
+def prepare_dataset_for_inference(data_path, data_list, tokenizer, slot_meta,
+                                max_seq_length, n_history=1, diag_level=False, op_code='4'):
+
+    if data_list is not None:
+        dials = data_list
+    else:
+        dials = json.load(open(data_path))
+
+    data = []
+    domain_counter = {}
+    max_resp_len, max_value_len = 0, 0
+    max_line = None
+
+    c = 0
+
+    for i, dial_dict in enumerate(dials):
+        if (i+1) % 200 == 0:
+            print("prepare {:}/{:}".format(i+1, len(dials)))
+            sys.stdout.flush()
+
+        for domain in dial_dict["domains"]:
+            if domain not in EXPERIMENT_DOMAINS:
                 continue
+            if domain not in domain_counter.keys():
+                domain_counter[domain] = 0
+            domain_counter[domain] += 1
+
+        dialog_history = []
+        last_dialog_state = {}
+        last_uttr = ""
+        ti = 0
+        turn_id = 0
+        while ti < len(dial_dict["dialogue"]):
+            turn = dial_dict["dialogue"][ti]
+            if ti == 0 and turn["role"] == "user":
+                ti += 1
+                continue
+            elif (ti + 1) == len(dial_dict["dialogue"]):
+                turn2 = {"state": []}
+                turn_uttr = (turn["text"] + ' ; ' + "").strip()
+            else:
+                ti += 1
+                turn2 = dial_dict["dialogue"][ti]
+                turn_uttr = (turn["text"] + ' ; ' + turn2["text"]).strip()
+
+
+            dialog_history.append(last_uttr)
+
+            turn_dialog_state = {}
+            turn_domain = EXPERIMENT_DOMAINS[0]
 
             last_uttr = turn_uttr
             op_labels, generate_y, gold_state = make_turn_label(slot_meta, last_dialog_state,
