@@ -214,6 +214,12 @@ def main(args):
     model.bert.embeddings.token_type_embeddings.weight.data[2].normal_(mean=0.0, std=0.02)
     model.bert.embeddings.token_type_embeddings.weight.data[3].normal_(mean=0.0, std=0.02)
     model.bert.resize_token_embeddings(len(tokenizer))
+
+    if args.use_prev_model is not 0:
+        ckpt_path = os.path.join('/opt/ml/code/transformer_dst', args.save_dir, 'model.e{:}.bin'.format(args.use_prev_model))
+        ckpt = torch.load(ckpt_path, map_location='cpu')
+        model.load_state_dict(ckpt)
+
     model.to(device)
 
     if args.use_wandb:
@@ -412,6 +418,7 @@ if __name__ == "__main__":
     parser.add_argument("--bert_config_path", default="./utils/bert_ko_small_minimal.json", type=str)
     parser.add_argument("--bert_config", default='dsksd/bert-ko-small-minimal', type=str)
     parser.add_argument("--bert_ckpt_path", default='./assets/dsksd/bert-ko-small-minimal-pytorch_model.bin', type=str)
+    parser.add_argument("--use_prev_model", default=35, type=int)
     parser.add_argument("--save_dir", default='outputs', type=str)
 
     parser.add_argument("--random_seed", default=42, type=int)
