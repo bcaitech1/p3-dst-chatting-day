@@ -228,8 +228,8 @@ if __name__ == "__main__":
     if args.use_TAPT:
         loss_fnc_pretrain = nn.CrossEntropyLoss()  # MLM pretrain
         n_pretrain_epochs = args.n_pretrain_epochs
-        for epoch in range(n_pretrain_epochs):
-            mlm_pretrain(args, train_loader, n_pretrain_epochs, device)
+        # for epoch in range(n_pretrain_epochs):
+        #     mlm_pretrain(args, train_loader, n_pretrain_epochs, device)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)

@@ -235,7 +235,7 @@ class SlotGenerator(nn.Module):
 
             # B,T,D * B,D,1 => B,T
             attn_e = torch.bmm(encoder_output, hidden.permute(1, 2, 0))  # B,T,1
-            attn_e = attn_e.squeeze(-1).masked_fill(input_masks, -1e9)
+            attn_e = attn_e.squeeze(-1).masked_fill(input_masks, -1e4)
             attn_history = F.softmax(attn_e, -1)  # B,T
 
             if self.proj_layer:
