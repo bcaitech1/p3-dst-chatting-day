@@ -418,10 +418,10 @@ if __name__ == "__main__":
     parser.add_argument("--bert_config_path", default="./utils/bert_ko_small_minimal.json", type=str)
     parser.add_argument("--bert_config", default='dsksd/bert-ko-small-minimal', type=str)
     parser.add_argument("--bert_ckpt_path", default='./assets/dsksd/bert-ko-small-minimal-pytorch_model.bin', type=str)
-    parser.add_argument("--use_prev_model", default=35, type=int)
+    parser.add_argument("--use_prev_model", default=0, type=int)
     parser.add_argument("--save_dir", default='outputs', type=str)
 
-    parser.add_argument("--random_seed", default=42, type=int)
+    parser.add_argument("--random_seed", default=39, type=int)
     parser.add_argument("--num_workers", default=4, type=int)
     parser.add_argument("--batch_size", default=16, type=int)
     parser.add_argument("--enc_warmup", default=0.1, type=float)
