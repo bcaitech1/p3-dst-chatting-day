@@ -306,8 +306,6 @@ if __name__ == "__main__":
                 print(
                     f"[{epoch}/{n_epochs}] [{step}/{len(train_loader)}] loss: {loss.item()} gen: {loss_1.item()} gate: {loss_2.item()}"
                 )
-            if step == 500:
-                break
 
         if args.use_TAPT:
             mlm_pretrain(args, train_loader, n_epochs, epoch, device)
