@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
-from transformers import AdamW, BertTokenizer, get_linear_schedule_with_warmup
+from transformers import AdamW, BertTokenizer, get_linear_schedule_with_warmup, BertConfig
 
 from data_utils import (WOSDataset, get_examples_from_dialogues, load_dataset,
                         set_seed)
@@ -42,12 +42,12 @@ def increment_output_dir(output_path, exist_ok=False):
         n = max(i) + 1 if i else 2
         return f"{path}{n}"
 
-def mlm_pretrain(loader, n_epochs):
+def mlm_pretrain(config, loader, n_epochs, device):
     model.train()
     for step, batch in enumerate(loader):
         input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [b.to(device) if not isinstance(b, list) else b for b in batch]
 
-        logits, labels = model.forward_pretrain(input_ids, tokenizer)
+        logits, labels = model.forward_pretrain(input_ids, tokenizer, config, device)
         loss = loss_fnc_pretrain(logits.view(-1, config.vocab_size), labels.view(-1))
 
         loss.backward()
@@ -124,6 +124,9 @@ if __name__ == "__main__":
     # Define Preprocessor
     tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
     processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=args.word_dropout) ## preprocessor에 word dropout 적용
+    _config = BertConfig.from_pretrained(args.model_name_or_path)
+    args.hidden_act = _config.hidden_act
+    args.layer_norm_eps = _config.layer_norm_eps
     args.vocab_size = len(tokenizer)
     args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr, yes, no
 
@@ -226,7 +229,7 @@ if __name__ == "__main__":
         loss_fnc_pretrain = nn.CrossEntropyLoss()  # MLM pretrain
         n_pretrain_epochs = args.n_pretrain_epochs
         for epoch in range(n_pretrain_epochs):
-            mlm_pretrain(train_loader, n_pretrain_epochs)
+            mlm_pretrain(args, train_loader, n_pretrain_epochs, device)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -303,7 +306,7 @@ if __name__ == "__main__":
                 break
 
         if args.use_TAPT:
-            mlm_pretrain(train_loader, n_epochs)
+            mlm_pretrain(args, train_loader, n_epochs, device)
 
         predictions = inference(model, dev_loader, processor, device)
         eval_result = _evaluation(predictions, dev_labels, slot_meta)

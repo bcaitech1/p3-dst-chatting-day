@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from transformers import ElectraModel, BertConfig, BertModel
+from transformers.modeling_bert import BertOnlyMLMHead
 
 
 def masked_cross_entropy_for_value(logits, target, pad_idx=0):
@@ -45,6 +46,8 @@ class TRADE(nn.Module):
         )
 
         self.decoder.set_slot_idx(tokenized_slot_meta)
+
+        self.mlm_head = BertOnlyMLMHead(config)
         self.tie_weight()
 
     def set_subword_embedding(self, model_name_or_path):
@@ -82,7 +85,7 @@ class TRADE(nn.Module):
         return all_point_outputs, all_gate_outputs
 
     @staticmethod
-    def mask_tokens(inputs, tokenizer, config, mlm_probability=0.15):
+    def mask_tokens(inputs, tokenizer, config, device, mlm_probability=0.15):
         """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
         labels = inputs.clone()
         # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
@@ -108,8 +111,8 @@ class TRADE(nn.Module):
         # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
 
-    def forward_pretrain(self, input_ids, tokenizer):
-        input_ids, labels = self.mask_tokens(input_ids, tokenizer, self.config)
+    def forward_pretrain(self, input_ids, tokenizer, config, device):
+        input_ids, labels = self.mask_tokens(input_ids, tokenizer, config, device)
         encoder_outputs, _ = self.encoder(input_ids=input_ids)
         mlm_logits = self.mlm_head(encoder_outputs)
 
