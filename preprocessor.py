@@ -94,7 +94,7 @@ class TRADEPreprocessor(DSTPreprocessor):
 
     def collate_fn(self, batch):
         guids = [b.guid for b in batch]
-        if self.word_drop > 0.0: ### word_dropout / code reference : 전재열 캠퍼님
+        if self.word_drop > 0.0: ### word_dropout
             input_ids = []
             for b in batch:
                 drop_mask = (
