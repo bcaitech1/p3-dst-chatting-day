@@ -24,7 +24,7 @@ class TRADEPreprocessor(DSTPreprocessor):
         self.trg_tokenizer = trg_tokenizer if trg_tokenizer else src_tokenizer
         self.ontology = ontology
         self.word_drop = word_drop ### word_dropout
-        self.gating2id = {"none": 0, "dontcare": 1, "ptr": 2, "yes": 3, "no": 4}
+        self.gating2id = {"none": 0, "dontcare": 1, "yes": 2, "no": 3, "ptr": 4}
         self.id2gating = {v: k for k, v in self.gating2id.items()}
         self.max_seq_length = max_seq_length
 
@@ -38,9 +38,9 @@ class TRADEPreprocessor(DSTPreprocessor):
             input_id = input_id[gap:]
 
         input_id = (
-                [self.src_tokenizer.cls_token_id]
-                + input_id
-                + [self.src_tokenizer.sep_token_id]
+            [self.src_tokenizer.cls_token_id]
+            + input_id
+            + [self.src_tokenizer.sep_token_id]
         )
         segment_id = [0] * len(input_id)
 
@@ -74,7 +74,7 @@ class TRADEPreprocessor(DSTPreprocessor):
             if self.id2gating[gate] == "none":
                 continue
 
-            if self.id2gating[gate] == ["dontcare", "yes", "no"]:
+            if self.id2gating[gate] in ["dontcare", "yes", "no"]:
                 recovered.append("%s-%s" % (slot, self.id2gating[gate]))
                 continue
 

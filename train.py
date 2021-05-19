@@ -42,6 +42,22 @@ def increment_output_dir(output_path, exist_ok=False):
         n = max(i) + 1 if i else 2
         return f"{path}{n}"
 
+def mlm_pretrain(loader, n_epochs):
+    model.train()
+    for step, batch in enumerate(loader):
+        input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [b.to(device) if not isinstance(b, list) else b for b in batch]
+
+        logits, labels = model.forward_pretrain(input_ids, tokenizer)
+        loss = loss_fnc_pretrain(logits.view(-1, config.vocab_size), labels.view(-1))
+
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if step % 100 == 0:
+            print('[%d/%d] [%d/%d] %f' % (epoch, n_epochs, step, len(loader), loss.item()))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="/opt/ml/input/data/train_dataset")
@@ -54,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_train_epochs", type=int, default=30)
     parser.add_argument("--warmup_ratio", type=int, default=0.1)
     parser.add_argument("--random_seed", type=int, default=42)
+    parser.add_argument("--word_dropout", type=float, default=0.0)
     parser.add_argument(
         "--model_name_or_path",
         type=str,
@@ -76,7 +93,10 @@ if __name__ == "__main__":
                         help="만약 지정되면 기존의 hidden_size는 embedding dimension으로 취급되고, proj_dim이 GRU의 hidden_size로 사용됨. hidden_size보다 작아야 함.",
                         default=None)
     parser.add_argument("--teacher_forcing_ratio", type=float, default=0.5)
-    parser.add_argument("--use_wandb", type=bool, default=False)
+    parser.add_argument("--use_wandb", type=bool, default=True)
+    parser.add_argument("--use_TAPT", type=bool, default=True)
+    parser.add_argument("--n_pretrain_epochs", type=int, default=3)
+
 
     # op code
     parser.add_argument("--op_code", type=int, default=4)
@@ -103,7 +123,7 @@ if __name__ == "__main__":
 
     # Define Preprocessor
     tokenizer = BertTokenizer.from_pretrained(args.model_name_or_path)
-    processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=0.1) ## preprocessor에 word dropout 적용
+    processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=args.word_dropout) ## preprocessor에 word dropout 적용
     args.vocab_size = len(tokenizer)
     args.n_gate = len(processor.gating2id)  # gating 갯수 none, dontcare, ptr, yes, no
 
@@ -148,8 +168,8 @@ if __name__ == "__main__":
 
     # Model 선언
     model = TRADE(args, tokenized_slot_meta)
-    model.set_subword_embedding(args.model_name_or_path)  # Subword Embedding 초기화
-    print(f"Subword Embeddings is loaded from {args.model_name_or_path}")
+    # model.set_subword_embedding(args.model_name_or_path)  # Subword Embedding 초기화
+    # print(f"Subword Embeddings is loaded from {args.model_name_or_path}")
     model.to(device)
     print("Model is initialized")
 
@@ -181,6 +201,17 @@ if __name__ == "__main__":
 
     # Optimizer 및 Scheduler 선언
     n_epochs = args.num_train_epochs
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "weight_decay": 0.01,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "weight_decay": 0.0,
+        },
+    ]
     t_total = len(train_loader) * n_epochs
     warmup_steps = int(t_total * args.warmup_ratio)
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=args.adam_epsilon)
@@ -190,6 +221,12 @@ if __name__ == "__main__":
 
     loss_fnc_1 = masked_cross_entropy_for_value  # generation
     loss_fnc_2 = nn.CrossEntropyLoss()  # gating
+
+    if args.use_TAPT:
+        loss_fnc_pretrain = nn.CrossEntropyLoss()  # MLM pretrain
+        n_pretrain_epochs = args.n_pretrain_epochs
+        for epoch in range(n_pretrain_epochs):
+            mlm_pretrain(train_loader, n_pretrain_epochs)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -213,6 +250,7 @@ if __name__ == "__main__":
         epoch_loss = 0.
         epoch_gen = 0.
         epoch_gate = 0.
+        batch_loss = []
         
         model.train()
         for step, batch in enumerate(train_loader):
@@ -248,6 +286,7 @@ if __name__ == "__main__":
                     gating_ids.contiguous().view(-1),
                 )
                 loss = loss_1 + loss_2
+                batch_loss.append(loss.item())
 
                 loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
@@ -263,6 +302,8 @@ if __name__ == "__main__":
             if step == 500:
                 break
 
+        if args.use_TAPT:
+            mlm_pretrain(train_loader, n_epochs)
 
         predictions = inference(model, dev_loader, processor, device)
         eval_result = _evaluation(predictions, dev_labels, slot_meta)
