@@ -42,7 +42,7 @@ def increment_output_dir(output_path, exist_ok=False):
         n = max(i) + 1 if i else 2
         return f"{path}{n}"
 
-def mlm_pretrain(config, loader, n_epochs, device):
+def mlm_pretrain(config, loader, n_epochs, epoch, device):
     model.train()
     for step, batch in enumerate(loader):
         input_ids, segment_ids, input_masks, gating_ids, target_ids, guids = [b.to(device) if not isinstance(b, list) else b for b in batch]
@@ -137,6 +137,8 @@ if __name__ == "__main__":
             train_features = pickle.load(f)
         with open(feature_path + '/dev_features.pickle', 'rb') as f:
             dev_features = pickle.load(f)
+        with open(feature_path + '/dev_labels.pickle', 'rb') as f:
+            dev_labels = pickle.load(f)
         print("Pickles brought!")
     else:
         train_data, dev_data, dev_labels = load_dataset(train_data_file)
@@ -159,6 +161,8 @@ if __name__ == "__main__":
             pickle.dump(train_features, f)
         with open(feature_path + '/dev_features.pickle', 'wb') as f:
             pickle.dump(dev_features, f)
+        with open(feature_path + '/dev_labels.pickle', 'wb') as f:
+            pickle.dump(dev_labels, f)
         print("Pickles saved!")
 
 
@@ -228,8 +232,8 @@ if __name__ == "__main__":
     if args.use_TAPT:
         loss_fnc_pretrain = nn.CrossEntropyLoss()  # MLM pretrain
         n_pretrain_epochs = args.n_pretrain_epochs
-        # for epoch in range(n_pretrain_epochs):
-        #     mlm_pretrain(args, train_loader, n_pretrain_epochs, device)
+        for epoch in range(n_pretrain_epochs):
+            mlm_pretrain(args, train_loader, n_pretrain_epochs, epoch, device)
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -306,7 +310,7 @@ if __name__ == "__main__":
                 break
 
         if args.use_TAPT:
-            mlm_pretrain(args, train_loader, n_epochs, device)
+            mlm_pretrain(args, train_loader, n_epochs, epoch, device)
 
         predictions = inference(model, dev_loader, processor, device)
         eval_result = _evaluation(predictions, dev_labels, slot_meta)
