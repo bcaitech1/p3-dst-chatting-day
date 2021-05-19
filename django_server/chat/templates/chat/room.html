@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Chat Room</title>
+</head>
+
+<body>
+    <textarea id="chat-log" cols="100" rows="20"></textarea><br/>
+    <input id="chat-message-input" type="text" size="100"/><br/>
+    <input id="chat-message-submit" type="button" value="Send"/>
+</body>
+
+<script>
+    var roomName = {{ room_name_json }};
+
+    var chatSocket = new WebSocket(
+        'ws://' + window.location.host +
+        '/ws/chat/' + roomName + '/');
+
+    chatSocket.onmessage = function(e) {
+        console.log(e);
+        var data = JSON.parse(e.data);
+        var message = data['message'];
+        if (data['send'] == 'sys'){
+            var _message = '{'
+            for(const [key, value] of Object.entries(message)){
+                _message += key +" -> "+value + ", ";
+            }
+            _message += '}으로 dialogue tracking 했습니다.'
+            document.querySelector('#chat-log').value += ('sys : ' +_message + '\n');
+        }
+        else{
+            document.querySelector('#chat-log').value += ('user : ' +message + '\n');
+        }
+        console.log(document.querySelector('#chat-log').value);
+    };
+
+    chatSocket.onclose = function(e) {
+        console.error('Chat socket closed unexpectedly');
+    };
+
+    document.querySelector('#chat-message-input').focus();
+    document.querySelector('#chat-message-input').onkeyup = function(e) {
+        if (e.keyCode === 13) {  // enter, return
+            document.querySelector('#chat-message-submit').click();
+        }
+    };
+
+    document.querySelector('#chat-message-submit').onclick = function(e) {
+        var messageInputDom = document.querySelector('#chat-message-input');
+        var messageAllDom = document.querySelector('#chat-log');
+        var message = messageInputDom.value;
+        var messageAll = messageAllDom.value;
+        chatSocket.send(JSON.stringify({
+            'utter' : "question",
+            'message': message
+        }));
+        chatSocket.send(JSON.stringify({
+            'utter' : "answer",
+            'message': message,
+            'messageAll' : messageAll
+        }));
+
+        messageInputDom.value = '';
+    };
+</script>
+
+</html>
