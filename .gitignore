@@ -21,3 +21,16 @@ wandb/
 
 # no features pickle
 features/
+
+# no tensorboard
+tensorboard/
+
+SomDST/pickles/
+
+SomDST/predictions/
+
+SomDST/outputs/
+
+SomDST/assets/bert-base-uncased-pytorch_model.bin
+
+Baseline/results/
