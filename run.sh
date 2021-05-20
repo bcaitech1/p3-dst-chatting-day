@@ -9,7 +9,7 @@ if [ $model_name = "SomDST" ]; then
 elif [ $model_name = "ChanDST" ]; then
     python ./ChanDST/main_chan.py
 elif [ $model_name = "TransformerDST" ]; then
-    python ./TransformerDST/train.py
+    python ./TransformerDST/TransformerDSTtrain.py
 elif [ $model_name = "TRADE_TAPT" ]; then
     python ./TRADE_TAPT/train.py
 # elif [ $model_name == "SomDST" ]; then

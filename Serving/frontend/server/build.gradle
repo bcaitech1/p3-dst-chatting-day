@@ -1,0 +1,32 @@
+dependencies {
+    implementation "io.netty:netty-all:${netty_version}"
+    implementation "io.prometheus:simpleclient:${prometheus_version}"
+    implementation "io.prometheus:simpleclient_servlet:${prometheus_version}"
+    implementation project(":modelarchive")
+    implementation "commons-cli:commons-cli:${commons_cli_version}"
+    implementation "org.pytorch:torchserve-plugins-sdk:${torchserve_sdk_version}"
+    testImplementation "org.testng:testng:${testng_version}"
+}
+
+apply from: file("${project.rootProject.projectDir}/tools/gradle/proto.gradle")
+apply from: file("${project.rootProject.projectDir}/tools/gradle/launcher.gradle")
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'org.pytorch.serve.ModelServer'
+    }
+    includeEmptyDirs = false
+    from configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+
+    exclude "META-INF/maven/**"
+    exclude "META-INF/INDEX.LIST"
+    exclude "META-INF/MANIFEST*"
+    exclude "META-INF//LICENSE*"
+    exclude "META-INF//NOTICE*"
+}
+
+test.doFirst {
+    systemProperty "tsConfigFile", 'src/test/resources/config.properties'
+    systemProperty "METRICS_LOCATION","build/logs"
+    systemProperty "LOG_LOCATION","build/logs"
+}

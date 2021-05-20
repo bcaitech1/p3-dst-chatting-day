@@ -46,7 +46,7 @@ def inference(model, eval_loader, processor, device):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default='/opt/ml/input/data/eval_dataset')
-    parser.add_argument("--model_dir", type=str, default='/opt/ml/code/results/exp2/model-1.bin')
+    parser.add_argument("--model_dir", type=str, default='/opt/ml/code/results/exp6/model-27.bin')
     parser.add_argument("--output_dir", type=str, default='/opt/ml/code/prediction')
     parser.add_argument("--eval_batch_size", type=int, default=32)
     args = parser.parse_args()
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     slot_meta = json.load(open(f"{model_dir_path}/slot_meta.json", "r"))
 
     tokenizer = BertTokenizer.from_pretrained(config.model_name_or_path)
-    processor = TRADEPreprocessor(slot_meta, tokenizer)
+    processor = TRADEPreprocessor(slot_meta, tokenizer, word_drop=0.1)
 
     eval_examples = get_examples_from_dialogues(
         eval_data, user_first=False, dialogue_level=False

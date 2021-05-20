@@ -1,8 +1,9 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from transformers import ElectraModel, BertConfig, BertModel
+from transformers.modeling_bert import BertOnlyMLMHead
 
 
 def masked_cross_entropy_for_value(logits, target, pad_idx=0):
@@ -45,6 +46,8 @@ class TRADE(nn.Module):
         )
 
         self.decoder.set_slot_idx(tokenized_slot_meta)
+
+        self.mlm_head = BertOnlyMLMHead(config)
         self.tie_weight()
 
     def set_subword_embedding(self, model_name_or_path):
@@ -80,6 +83,40 @@ class TRADE(nn.Module):
         )
 
         return all_point_outputs, all_gate_outputs
+
+    @staticmethod
+    def mask_tokens(inputs, tokenizer, config, device, mlm_probability=0.15):
+        """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
+        labels = inputs.clone()
+        # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
+        probability_matrix = torch.full(labels.shape, mlm_probability).to(device)
+        # special_tokens_mask = [tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()]
+
+        probability_matrix.masked_fill_(torch.eq(labels, 0), value=0.0)
+
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).to(device=device,
+                                                                             dtype=torch.bool) & masked_indices
+        inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(["[MASK]"])[0]
+
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).to(device=device,
+                                                                           dtype=torch.bool) & masked_indices & ~indices_replaced
+        random_words = torch.randint(config.vocab_size, labels.shape, device=device, dtype=torch.long)
+        inputs[indices_random] = random_words[indices_random].to(device)
+
+        # The rest of the time (10% of the time) we keep the masked input tokens unchanged
+        return inputs, labels
+
+    def forward_pretrain(self, input_ids, tokenizer, config, device):
+        input_ids, labels = self.mask_tokens(input_ids, tokenizer, config, device)
+        encoder_outputs, _ = self.encoder(input_ids=input_ids)
+        mlm_logits = self.mlm_head(encoder_outputs)
+
+        return mlm_logits, labels
 
 
 class BERTEncoder(nn.Module):
@@ -180,11 +217,11 @@ class SlotGenerator(nn.Module):
         # J, slot_meta : key : [domain, slot] ex> LongTensor([1,2])
         # J,2
         batch_size = encoder_output.size(0)
-        slot = torch.tensor(self.slot_embed_idx, dtype=torch.int64, device=input_ids.device)
+        slot = torch.tensor(self.slot_embed_idx, dtype=torch.int64).to(input_ids.device)
         slot_e = torch.sum(self.embedding(slot), 1)  # J,d
         J = slot_e.size(0)
 
-        all_point_outputs = torch.zeros(batch_size, J, max_len, self.vocab_size, device=input_ids.device)
+        all_point_outputs = torch.zeros(batch_size, J, max_len, self.vocab_size).to(input_ids.device)
 
         # Parallel Decoding
         w = slot_e.repeat(batch_size, 1).unsqueeze(1)
