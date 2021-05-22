@@ -6,3 +6,31 @@ results/
 
 # no __pycache__ folder
 __pycache__
+
+# no .idea folder
+.idea/
+
+# no .ipynb_checkpoints
+.ipynb_checkpoints/
+
+# no model_stor file
+model_store/
+
+# no wandb results
+wandb/
+
+# no features pickle
+features/
+
+# no tensorboard
+tensorboard/
+
+SomDST/pickles/
+
+SomDST/predictions/
+
+SomDST/outputs/
+
+SomDST/assets/bert-base-uncased-pytorch_model.bin
+
+Baseline/results/
