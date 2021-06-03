@@ -33,7 +33,7 @@
 <p align="center"><img src="https://user-images.githubusercontent.com/37205213/120572270-a1759000-c456-11eb-8273-80054cb9db1f.png"></p>
 
 
-- **대화 상태 추적(Dialogue State Tracking)**은 목적 지향형 대화(Task-Oriented Dialogue)의 중요한 하위 테스크 중 하나입니다.
+- **대화 상태 추적(Dialogue State Tracking)** 은 목적 지향형 대화(Task-Oriented Dialogue)의 중요한 하위 테스크 중 하나입니다.
 - 유저와의 대화에서 미리 시나리오에 의해 정의된 정보인 Slot과 매 턴마다 그에 속할 수 있는 Value의 집합인, **대화 상태 (Dialogue State)를 매 턴마다 추론하는 테스크**입니다.
 - 시스템은 유저의 목적(Goal)을 파악해야만 하고, 보통 이 Goal은 **(Slot, Value) 페어의 집합**으로 표현될 수 있습니다.
 - 예를들어, 숙소를 예약하는 시나리오의 경우 "숙소의 종류", "숙소의 가격대"가 Slot의 타입이 될 수 있고, 이에 속할 수 있는 Value로 각각 ("호텔", "모텔", "에어비앤비", ...), ("저렴", "적당", "비싼", ...) 등을 가질 수 있습니다.
