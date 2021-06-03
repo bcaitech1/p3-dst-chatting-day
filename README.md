@@ -11,6 +11,11 @@
 * [\[Usage\]](#usage)
 * [\[File Structure\]](#file-structure)
     * [Baseline(TRADE)](#baseline-trade)
+    * [CHAN-DST](#chan-dst)
+    * [SOM-DST](#som-dst)
+    * [Transformer-DST](#transformer-dst)
+    * [TAPT (Task adaptive Pretraining)](#tapt-task-adaptive-pretraining)
+    * [Serving](#serving)
 
 
 <br>
