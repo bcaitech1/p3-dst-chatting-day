@@ -29,3 +29,10 @@ p3-dst-chatting-day/
 │   │   └── test.json - model serving 후 test해볼 수 있는 json 파일
 └── └── ...
 ```
+
+<br>
+<br>
+
+### Reference
+
+- **TorchServe 공식 Github :** [TorchServe](https://github.com/pytorch/serve)
