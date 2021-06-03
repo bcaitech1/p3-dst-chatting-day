@@ -18,6 +18,7 @@
     * [Serving](#serving)
 * [\[Input JSON File\]](#input-json-file)
 * [\[Contributors\]](#contributors)
+* [\[Notion\]](#notion)
 * [\[Reference\]](#reference)
     * [Papers](#papers)
     * [Dataset](#dataset)
@@ -394,6 +395,14 @@ Input으로 들어가는 JSON File은 `WOS (Wizard Of Seoul)`의 양식을 따�
 - **이창우** ([Changwoomon](https://github.com/changwoomon))
 - **안유진** ([dkswndms4782](https://github.com/dkswndms4782))
 - **선재우** ([JAEWOOSUN](https://github.com/JAEWOOSUN))
+
+<br>
+<br>
+
+## [Notion]
+
+Chatting Day 피어들의 `Ground Rule`, `실험노트`, `피어세션` 등 한달 간의 행보를 확인하시려면 다음 링크를 클릭하세요. 
+- **LINK** : https://www.notion.so/DST-7-ChattingDay-dba744b4c9c141f59ec797d3f8b13289
 
 <br>
 <br>
