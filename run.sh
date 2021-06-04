@@ -12,8 +12,6 @@ elif [ $model_name = "TransformerDST" ]; then
     python ./TransformerDST/TransformerDSTtrain.py
 elif [ $model_name = "TRADE_TAPT" ]; then
     python ./TRADE_TAPT/train.py
-# elif [ $model_name == "SomDST" ]; then
-#     python ./SomDST/train.py
 else
     echo "Invalid model name!"
 fi
