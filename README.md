@@ -1,5 +1,10 @@
 # Chatting-Day's Dialogue State Tracking (DST)
 
+**프로젝트 기간 : 2021.04.26 ~ 2021.05.20**
+<br>
+
+**프로젝트 주제 : Deep Knowledge Tracing**
+<br>
 <br>
 
 ## [목차]
