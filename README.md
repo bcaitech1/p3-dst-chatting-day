@@ -1,5 +1,10 @@
 # Chatting-Day's Dialogue State Tracking (DST)
 
+**프로젝트 기간 : 2021.04.26 ~ 2021.05.20**
+<br>
+
+**프로젝트 주제 : Deep Knowledge Tracing**
+<br>
 <br>
 
 ## [목차]
@@ -392,7 +397,7 @@ Input으로 들어가는 JSON File은 `WOS (Wizard Of Seoul)`의 양식을 따�
 
 - **정희석** ([Heeseok-Jeong](https://github.com/Heeseok-Jeong))
 - **신문종** ([moon-jong](https://github.com/moon-jong))
-- **이창우** ([Changwoomon](https://github.com/changwoomon))
+- **이창우** ([changwoomon](https://github.com/changwoomon))
 - **안유진** ([dkswndms4782](https://github.com/dkswndms4782))
 - **선재우** ([JAEWOOSUN](https://github.com/JAEWOOSUN))
 
